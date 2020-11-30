@@ -4,9 +4,9 @@ import sys
 
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QApplication, QWidget
-from MrRoboto_python_test import *
-from sample_gui import Ui_Form
-from sample_cassette import SampleCassette
+from .mr_roboto.MrRoboto_python_test import *
+from .sample_gui import Ui_Form
+from .sample_cassette import SampleCassette
 import qdarkstyle
 
 
@@ -126,10 +126,4 @@ class MrRobotoGui(QWidget):
     def scan_all_sampels(self, _):
         pass
 
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    os.environ['PYQTGRAPH_QT_LIB'] = 'PyQt5'
-    app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api=os.environ['PYQTGRAPH_QT_LIB']))
-    w = MrRobotoGui()
-    w.show()
-    sys.exit(app.exec_())
+
