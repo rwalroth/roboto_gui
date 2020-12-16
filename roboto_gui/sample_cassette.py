@@ -9,7 +9,7 @@ class SampleButton(QtWidgets.QPushButton):
         super(SampleButton, self).__init__(text, parent)
         self.row = row
         self.column = column
-        self.metaData = ""
+        self.metaData = {}
         self.clicked.connect(self.button_clicked)
 
     def button_clicked(self, _):
@@ -21,6 +21,7 @@ class SampleButton(QtWidgets.QPushButton):
 
     def set_meta(self, newData):
         self.metaData = newData
+        self.setText(newData["id"])
 
 
 class SampleCassette(QtWidgets.QWidget):
@@ -34,7 +35,13 @@ class SampleCassette(QtWidgets.QWidget):
         for i in range(9):
             row = i // 3
             column = i % 3
-            newButton = SampleButton("unscanned", row - 1, column - 1, self)
+            newButton = SampleButton(f"unscanned {i}", row - 1, column - 1, self)
             newButton.sigClicked.connect(self.sigSampleClicked.emit)
             self.layout.addWidget(newButton, row, column)
             self.sampleButtons.append(newButton)
+
+    def set_metadata(self, sample):
+        row = int(sample["row"]) + 1
+        column = int(sample["column"]) + 1
+        idx = row * 3 + column
+        self.sampleButtons[idx].set_meta(sample["metaData"])
