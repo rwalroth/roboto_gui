@@ -3,7 +3,8 @@ import json
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
-from .keylogger import RawKeyboardProc, KeyboardHookProc
+from .keylogger import RawKeyboardProc, KeyboardHookProc, UWM_NEWNAME_MSG
+from .keylogger.win_defs import RegisterWindowMessage, LPCWSTR, PostMessage
 from ctypes.wintypes import HWND
 
 
@@ -20,12 +21,14 @@ class QKeyLog(QThread):
         self.hookCommandQ = Queue()
         self.keylogger = RawKeyboardProc(self.bufferQueue, daemon=True)
         self.keyhook = None
+        self.UWM_NEWNAME = RegisterWindowMessage(LPCWSTR(UWM_NEWNAME_MSG))
 
     def run(self):
         self.keylogger.start()
         message = json.loads(self.bufferQueue.get())
         print(message)
         self.keyhook = KeyboardHookProc(message["hwnd"], self.hookCommandQ, daemon=True)
+        self.keylogHwnd = HWND(message["hwnd"])
         self.keyhook.start()
         while True:
             if not self.bufferQueue.empty():
@@ -50,6 +53,7 @@ class QKeyLog(QThread):
                     self.stringBuffer = ""
                 elif command == "REGISTER":
                     self.getKeyboard = True
+                    PostMessage(self.keylogHwnd, self.UWM_NEWNAME, 0, 0)
                 elif command == "KEYBOARD":
                     self.sigKeyboard.emit(self.keyboard)
                 elif command == "QUIT":

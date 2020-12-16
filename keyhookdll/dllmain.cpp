@@ -63,7 +63,8 @@ extern "C" KEYHOOKDLL_API BOOL clearMyHook(HWND hWnd) {
 }
 
 static LRESULT CALLBACK msghook(int nCode, WPARAM wParam, LPARAM lParam) {
-    if (SendMessage(hWndServer, UWM_KBHOOK, wParam, lParam)) return 1;
+    if (SendMessage(hWndServer, UWM_KBHOOK, wParam, lParam)) 
+        return 1;
     return CallNextHookEx(hook, nCode, wParam, lParam);
 }
 

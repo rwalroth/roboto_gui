@@ -1,4 +1,6 @@
 import json
+import time
+from copy import deepcopy
 from multiprocessing import Queue, Process
 
 import win32gui
@@ -7,6 +9,7 @@ from win32con import CW_USEDEFAULT, NULL
 from .win_defs import *
 
 UWM_KBHOOK_MSG = "UMW_KBHOOK-{B30856F0-D3DD-11d4-A00B-006067718D04}"
+UWM_NEWNAME_MSG = "UWM_NEWNAME-{l3EvBXYE-rqL3-9u11-0fe2-Jl342JRjEuzc}"
 
 class RawKeyboardProc(Process):
     def __init__(self, bufferQueue=None, *args, **kwargs):
@@ -19,6 +22,10 @@ class RawKeyboardProc(Process):
         self.shift_down = False
 
         self.UWM_KBHOOK = None
+        self.UWM_NEWNAME = None
+
+        self.getNextKeyboard = False
+        self.keyboardName = ""
 
     def run(self):
         CLASS_NAME = "My window class"
@@ -59,49 +66,105 @@ class RawKeyboardProc(Process):
 
         RegisterRawInputDevices(Rid, 1, sizeof(RAWINPUTDEVICE))
         self.UWM_KBHOOK = RegisterWindowMessage(LPCWSTR(UWM_KBHOOK_MSG))
+        self.UWM_NEWNAME = RegisterWindowMessage(LPCWSTR(UWM_NEWNAME_MSG))
+
+        self.decisionBuffer = []
         win32gui.PumpMessages()
 
     def WndProc(self, hwnd, uMsg, wParam, lParam):
-        if uMsg == WM_INPUT:
-            dwSize = c_uint()
-            GetRawInputData(lParam, RID_INPUT, NULL, byref(dwSize), sizeof(RAWINPUTHEADER))
+        if uMsg == self.UWM_NEWNAME:
+            self.getNextKeyboard = True
 
-            raw = RAWINPUT()
-
-            GetRawInputData(lParam, RID_INPUT, byref(raw), byref(dwSize), sizeof(RAWINPUTHEADER))
+        elif uMsg == WM_INPUT:
+            raw = self._get_raw_data(lParam)
 
             if raw.header.dwType == RIM_TYPEKEYBOARD:
-                bufferSize = c_uint()
-                GetRawInputDeviceInfo(raw.header.hDevice, RIDI_DEVICENAME, NULL, byref(bufferSize))
+                keyboardName = self._get_keyboard_name(raw)
+                if self.getNextKeyboard:
+                    self.keyboardName = keyboardName
+                    self.getNextKeyboard = False
 
-                stringBuffer = create_unicode_buffer(bufferSize.value)
-                GetRawInputDeviceInfo(raw.header.hDevice, RIDI_DEVICENAME, byref(stringBuffer), byref(bufferSize))
-                keyboardName = ''.join(stringBuffer)
-                message = {"keyboard": keyboardName}
-                message["key"] = None
+                self.decisionBuffer.append(
+                    {
+                        "code": raw.keyboard.VKey,
+                        "pressed": raw.keyboard.Flags == RI_KEY_MAKE,
+                        "block": self.keyboardName == keyboardName
+                    }
+                )
                 print(f"Raw: {raw.keyboard.VKey}, {raw.keyboard.Flags == RI_KEY_MAKE}")
-                if raw.keyboard.VKey in VKCodes:
-                    newChar = VKCodes[raw.keyboard.VKey]
-                    if raw.keyboard.Flags == RI_KEY_MAKE:
-                        if newChar[0] == "SHIFT":
-                            self.shift_down = True
-                        elif newChar[0] == "SPACE":
-                            message["key"] = ' '
-                        elif self.shift_down:
-                            message["key"] = newChar[1]
-                        else:
-                            message["key"] = newChar[0]
-                        self.bufferQueue.put(json.dumps(message))
-                    elif raw.keyboard.Flags == RI_KEY_BREAK:
-                        if newChar[0] == "SHIFT":
-                            self.shift_down = False
+
+                if self.keyboardName == keyboardName:
+                    self._send_keyboard_message(keyboardName, raw)
             return 0
 
         elif uMsg == self.UWM_KBHOOK:
             pressed = True
             if lParam & 0x80000000:
                 pressed = False
-            print(f"Hook: {USHORT(wParam)}, {pressed}")
+            print(f"Hook: {wParam}, {pressed}")
+            found = False
+            decision = {}
+            if self.decisionBuffer:
+                for i in range(len(self.decisionBuffer)):
+                    dec = self.decisionBuffer[i]
+                    if dec["pressed"] == pressed and dec["code"] == wParam:
+                        decision.update(dec)
+                        for j in range(i):
+                            self.decisionBuffer.pop(0)
+                        found = True
+                        break
+                if found:
+                    print(decision)
+                    if decision["block"]:
+                        return 1
+                    return 0
+            if not found:
+                start = time.time() * 1000
+                rawMessage = MSG()
+                while not PeekMessage(byref(rawMessage), hwnd, WM_INPUT, WM_INPUT, PM_REMOVE):
+                    if time.time() * 1000 - start > 100:
+                        print("Hook time out")
+                        return 0
+                raw = self._get_raw_data(rawMessage.lParam)
+                keyboardName = self._get_keyboard_name(raw)
+
+                if self.keyboardName == keyboardName:
+                    self._send_keyboard_message(keyboardName, raw)
+                    return 1
             return 0
 
         return DefWindowProc(hwnd, uMsg, wParam, lParam)
+
+    def _send_keyboard_message(self, keyboardName, raw):
+        message = {"keyboard": keyboardName}
+        message["key"] = None
+        if raw.keyboard.VKey in VKCodes:
+            newChar = VKCodes[raw.keyboard.VKey]
+            if raw.keyboard.Flags == RI_KEY_MAKE:
+                if newChar[0] == "SHIFT":
+                    self.shift_down = True
+                elif newChar[0] == "SPACE":
+                    message["key"] = ' '
+                elif self.shift_down:
+                    message["key"] = newChar[1]
+                else:
+                    message["key"] = newChar[0]
+                self.bufferQueue.put(json.dumps(message))
+            elif raw.keyboard.Flags == RI_KEY_BREAK:
+                if newChar[0] == "SHIFT":
+                    self.shift_down = False
+
+    def _get_raw_data(self, lParam):
+        dwSize = c_uint()
+        GetRawInputData(lParam, RID_INPUT, NULL, byref(dwSize), sizeof(RAWINPUTHEADER))
+        raw = RAWINPUT()
+        GetRawInputData(lParam, RID_INPUT, byref(raw), byref(dwSize), sizeof(RAWINPUTHEADER))
+        return raw
+
+    def _get_keyboard_name(self, raw):
+        bufferSize = c_uint()
+        GetRawInputDeviceInfo(raw.header.hDevice, RIDI_DEVICENAME, NULL, byref(bufferSize))
+        stringBuffer = create_unicode_buffer(bufferSize.value)
+        GetRawInputDeviceInfo(raw.header.hDevice, RIDI_DEVICENAME, byref(stringBuffer), byref(bufferSize))
+        keyboardName = ''.join(stringBuffer)
+        return keyboardName

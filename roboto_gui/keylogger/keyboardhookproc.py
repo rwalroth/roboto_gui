@@ -1,19 +1,22 @@
 from multiprocessing import Process, Queue
 import os
+import sys
 
-from win32con import WH_KEYBOARD
-import win32api
-import win32gui
 from .win_defs import *
 
 mainPath = os.path.abspath(__file__).split("roboto_gui")[0]
 
-dllPath = os.path.join(
-    mainPath,
-    "roboto_gui\\keyhookdll\\Release\\keyhookdll.dll"
-)
+if sys.maxsize > 2**32:
+    dllPath = os.path.join(
+        mainPath,
+        "roboto_gui\\keyhookdll\\x64\\Release\\keyhookdll.dll"
+    )
+else:
+    dllPath = os.path.join(
+        mainPath,
+        "roboto_gui\\keyhookdll\\Release\\keyhookdll.dll"
+    )
 
-print(dllPath)
 
 class KeyboardHookProc(Process):
     def __init__(self, hwnd, commandQueue=None, *args, **kwargs):

@@ -2,7 +2,6 @@
 # http://msdn.microsoft.com/en-us/library/ms645565(VS.85).aspx
 # http://www.eventghost.org (the source code)
 
-import sys
 from ctypes import *
 from ctypes.wintypes import *
 from .vkcodes import VKCodes
@@ -13,6 +12,9 @@ RIDEV_INPUTSINK = 0x00000100
 WM_INPUT = 0x0ff
 WM_USER = 0x0400
 WM_PAINT = 0x000f
+PM_NOREMOVE = 0x0000
+PM_REMOVE = 0x0001
+PM_NOYIELD = 0x0002
 RID_INPUT = 0x10000003
 RIM_TYPEKEYBOARD = 0x00000001
 RIDI_DEVICENAME = 0x20000007
@@ -29,6 +31,10 @@ RegisterWindowMessage = windll.user32.RegisterWindowMessageW
 RegisterWindowMessage.argtypes = (LPCWSTR,)
 DefWindowProc = windll.user32.DefWindowProcA
 DefWindowProc.argtypes = (HWND, UINT, WPARAM, LPARAM)
+PostMessage = windll.user32.PostMessageW
+PostMessage.argtypes = (HWND, UINT, WPARAM, LPARAM)
+PeekMessage = windll.user32.PeekMessageW
+PeekMessage.argtypes = (LPMSG, HWND, UINT, UINT, UINT)
 
 
 class RAWINPUTDEVICE(Structure):
