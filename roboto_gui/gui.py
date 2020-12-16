@@ -172,3 +172,8 @@ class MrRobotoGui(QWidget):
     def _current_cassette(self):
         idx = int(self.ui.currentCassetteLabel.text())
         return self.cassettes[idx - 1]
+
+    def closeEvent(self, event):
+        self.commandQueue.put("QUIT")
+        self.keylog.wait()
+        super(MrRobotoGui, self).closeEvent(event)

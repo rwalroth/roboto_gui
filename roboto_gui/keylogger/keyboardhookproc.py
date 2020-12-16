@@ -6,7 +6,14 @@ import win32api
 import win32gui
 from .win_defs import *
 
-dllPath = r"C:\Users\walroth\Documents\repos\roboto_gui\keyhookdll\x64\Release\keyhookdll.dll"
+mainPath = os.path.abspath(__file__).split("roboto_gui")[0]
+
+dllPath = os.path.join(
+    mainPath,
+    "roboto_gui\\keyhookdll\\Release\\keyhookdll.dll"
+)
+
+print(dllPath)
 
 class KeyboardHookProc(Process):
     def __init__(self, hwnd, commandQueue=None, *args, **kwargs):
