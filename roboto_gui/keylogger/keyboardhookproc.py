@@ -31,7 +31,8 @@ class KeyboardHookProc(Process):
         dll = WinDLL(dllPath)
         hwnd = HWND(self.hwnd)
         res = dll.setMyHook(hwnd)
-        print(res)
+        if res != 1:
+            raise RuntimeError("Failed to set hook")
         while True:
             if not self.commandQueue.empty():
                 command = self.commandQueue.get()

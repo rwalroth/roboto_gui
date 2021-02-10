@@ -1,25 +1,26 @@
-from RobotController import *
+from .RobotController import *
 import msvcrt
 
 # Standard library imports
 import sys, os, glob, fnmatch, re, time
+from ..pySSRL_bServer.bServer_funcs import specCommand
 
 # Other Imports
-import numpy as np
-import scipy
+# import numpy as np
+# import scipy
 
-from collections import OrderedDict
-from copy import deepcopy
+# from collections import OrderedDict
+# from copy import deepcopy
 
 # This module imports
-from silx.io.specfile import SpecFile
+# from silx.io.specfile import SpecFile
 
 # XDart imports
-sys.path.append('C:\\Users\\Public\\Documents\\repos\\xdart')
-from xdart.modules.pySSRL_bServer.bServer_funcs import *
-from xdart.utils import get_from_pdi, get_motor_val, query, query_yes_no
-from xdart.utils import read_image_file, smooth_img, get_fit, fit_images_2D
-from xdart.modules.pySSRL_bServer.bServer_funcs import specCommand, wait_until_SPECfinished, get_console_output
+# sys.path.append('C:\\Users\\Public\\Documents\\repos\\xdart')
+# from xdart.modules.pySSRL_bServer.bServer_funcs import *
+# from xdart.utils import get_from_pdi, get_motor_val, query, query_yes_no
+# from xdart.utils import read_image_file, smooth_img, get_fit, fit_images_2D
+# from xdart.modules.pySSRL_bServer.bServer_funcs import specCommand, wait_until_SPECfinished, get_console_output
 
 SampleReadyPose = [145.333, -0.282, 195, 180, 0, -180]
 SampleHeight = 69
@@ -307,51 +308,51 @@ def SPEC_scan_sample(remote_path, local_path, samplecode):
 
 
 
-
-mr_roboto = MrRobotoStart()
-mr_roboto.Delay(2)
-#mr_roboto.GripperOpen()
-#mr_roboto.Delay(0.5)
-#mr_roboto.GripperClose()
-#mr_roboto.Delay(0.5)
-#mr_roboto.GripperOpen()
-
-
-#ax, ay = GrabSample(mr_roboto,-1,0)
-#code = ScanSample(mr_roboto)
-#print("Sample code is " + str(code))
-#ReplaceSample(mr_roboto, ax, ay)
-
-#ax, ay = GrabSample(mr_roboto,0,0)
-#code = ScanSample(mr_roboto)
-#print("Sample code is " + str(code))
-#ReplaceSample(mr_roboto, ax, ay)
-
-#ax, ay = GrabSample(mr_roboto,1,0)
-#code = ScanSample(mr_roboto)
-#print("Sample code is " + str(code))
-#ReplaceSample(mr_roboto, ax, ay)
+if __name__ == "__main__":
+    mr_roboto = MrRobotoStart()
+    mr_roboto.Delay(2)
+    #mr_roboto.GripperOpen()
+    #mr_roboto.Delay(0.5)
+    #mr_roboto.GripperClose()
+    #mr_roboto.Delay(0.5)
+    #mr_roboto.GripperOpen()
 
 
-ax, ay = GrabSample(mr_roboto,0,0)
-#code = ScanSample(mr_roboto)
-#print("Sample code is " + str(code))
-mr_roboto.MoveJoints(0,0,0,0,0,0)
-#mr_roboto.Delay(3)
-#MountSample(mr_roboto)
-#mr_roboto.MoveJoints(0,0,0,0,0,0)
+    #ax, ay = GrabSample(mr_roboto,-1,0)
+    #code = ScanSample(mr_roboto)
+    #print("Sample code is " + str(code))
+    #ReplaceSample(mr_roboto, ax, ay)
 
-#SPEC_startspin()
-#mr_roboto.Delay(2)
-#remote_path = '~/data/mr_roboto/'
-#local_path  = 'P:\\bl2-1\\mr_roboto'
-#SPEC_scan_sample(remote_path, local_path, code)
+    #ax, ay = GrabSample(mr_roboto,0,0)
+    #code = ScanSample(mr_roboto)
+    #print("Sample code is " + str(code))
+    #ReplaceSample(mr_roboto, ax, ay)
 
-#SPEC_stopspin()
-#DismountSample(mr_roboto)
-ReplaceSample(mr_roboto, ax, ay)
-mr_roboto.MoveJoints(0,0,0,0,0,0)
-mr_roboto.Delay(3)
+    #ax, ay = GrabSample(mr_roboto,1,0)
+    #code = ScanSample(mr_roboto)
+    #print("Sample code is " + str(code))
+    #ReplaceSample(mr_roboto, ax, ay)
 
-mr_roboto.Deactivate()
-mr_roboto.Disconnect()
+
+    ax, ay = GrabSample(mr_roboto,0,0)
+    #code = ScanSample(mr_roboto)
+    #print("Sample code is " + str(code))
+    mr_roboto.MoveJoints(0,0,0,0,0,0)
+    #mr_roboto.Delay(3)
+    #MountSample(mr_roboto)
+    #mr_roboto.MoveJoints(0,0,0,0,0,0)
+
+    #SPEC_startspin()
+    #mr_roboto.Delay(2)
+    #remote_path = '~/data/mr_roboto/'
+    #local_path  = 'P:\\bl2-1\\mr_roboto'
+    #SPEC_scan_sample(remote_path, local_path, code)
+
+    #SPEC_stopspin()
+    #DismountSample(mr_roboto)
+    ReplaceSample(mr_roboto, ax, ay)
+    mr_roboto.MoveJoints(0,0,0,0,0,0)
+    mr_roboto.Delay(3)
+
+    mr_roboto.Deactivate()
+    mr_roboto.Disconnect()

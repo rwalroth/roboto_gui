@@ -1,4 +1,4 @@
-from RobotController import *
+from .RobotController import *
 import time, msvcrt
 import sys
 

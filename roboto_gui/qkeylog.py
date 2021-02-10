@@ -11,12 +11,13 @@ from ctypes.wintypes import HWND
 class QKeyLog(QThread):
     sigBuffer = pyqtSignal(str)
     sigKeyboard = pyqtSignal(str)
-    def __init__(self, commandqueue, *args, **kwargs):
+
+    def __init__(self, commandqueue, tsString, *args, **kwargs):
         super(QKeyLog, self).__init__(*args, **kwargs)
+        self.tsString = tsString
         self.commandQueue = commandqueue
         self.getKeyboard = False
         self.keyboard = None
-        self.stringBuffer = ""
         self.bufferQueue = Queue()
         self.hookCommandQ = Queue()
         self.keylogger = RawKeyboardProc(self.bufferQueue, daemon=True)
@@ -39,18 +40,17 @@ class QKeyLog(QThread):
                     self.getKeyboard = False
                     self.sigKeyboard.emit(self.keyboard)
                 if self.keyboard is not None and self.keyboard == message["keyboard"] and message["key"] is not None:
-                    self.stringBuffer += message["key"]
+                    self.tsString.append_data(message["key"])
             if not self.commandQueue.empty():
                 command = self.commandQueue.get()
                 if command == "PEEK":
-                    self.sigBuffer.emit(self.stringBuffer)
+                    self.sigBuffer.emit(self.tsString.get_data())
                 elif command == "GET":
-                    print(self.stringBuffer)
-                    self.sigBuffer.emit(self.stringBuffer)
-                    self.stringBuffer = ""
+                    print(self.tsString.get_data())
+                    self.tsString.set_data("")
                 elif command == "CLEAR":
-                    print(self.stringBuffer)
-                    self.stringBuffer = ""
+                    print(self.tsString.get_data())
+                    self.tsString.set_data("")
                 elif command == "REGISTER":
                     self.getKeyboard = True
                     PostMessage(self.keylogHwnd, self.UWM_NEWNAME, 0, 0)
