@@ -7,15 +7,9 @@ from .win_defs import *
 mainPath = os.path.abspath(__file__).split("roboto_gui")[0]
 
 if sys.maxsize > 2**32:
-    dllPath = os.path.join(
-        mainPath,
-        "roboto_gui\\keyhookdll\\x64\\Release\\keyhookdll.dll"
-    )
+    dllPath = "keyhookdll\\x64\\keyhookdll.dll"
 else:
-    dllPath = os.path.join(
-        mainPath,
-        "roboto_gui\\keyhookdll\\Release\\keyhookdll.dll"
-    )
+    dllPath = "keyhookdll\\Win32\\keyhookdll.dll"
 
 
 class KeyboardHookProc(Process):
