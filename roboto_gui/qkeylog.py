@@ -27,7 +27,6 @@ class QKeyLog(QThread):
     def run(self):
         self.keylogger.start()
         message = json.loads(self.bufferQueue.get())
-        print(message)
         self.keyhook = KeyboardHookProc(message["hwnd"], self.hookCommandQ, daemon=True)
         self.keylogHwnd = HWND(message["hwnd"])
         self.keyhook.start()

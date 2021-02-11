@@ -28,6 +28,7 @@ class RawKeyboardProc(Process):
         self.decisionBuffer = []
 
     def run(self):
+        print("Starting raw keyboard proc")
         CLASS_NAME = "Mr Roboto raw keyboard input class"
         hInstance = win32api.GetModuleHandle()
 
@@ -87,13 +88,11 @@ class RawKeyboardProc(Process):
         pressed = True
         if lParam & 0x80000000:
             pressed = False
-        print(f"Hook: {wParam}, {pressed}")
         found = False
         decision = {}
         if self.decisionBuffer:
             found = self._get_decision_from_buffer(decision, found, pressed, wParam)
             if found:
-                print(decision)
                 if decision["block"]:
                     return 1
                 return 0
@@ -148,7 +147,6 @@ class RawKeyboardProc(Process):
                     "block": self.keyboardName == keyboardName
                 }
             )
-            print(f"Raw: {raw.keyboard.VKey}, {raw.keyboard.Flags == RI_KEY_MAKE}")
 
             if self.keyboardName == keyboardName:
                 self._send_keyboard_message(keyboardName, raw)
@@ -168,6 +166,9 @@ class RawKeyboardProc(Process):
 
                 elif newChar[0] == "SPACE":
                     message["key"] = ' '
+                
+                elif newChar[0] == "ENTER":
+                    message["key"] = ''
 
                 elif self.shift_down:
                     message["key"] = newChar[1]

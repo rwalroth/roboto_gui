@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QWidget, QMainWindow
 
 import pandas as pd
 
-from .mr_roboto.MrRoboto_scan_test import *
+from .mr_roboto.mr_roboto_funcs import *
 from .sample_gui import Ui_MainWindow
 from .sample_cassette import SampleCassette
 from .qkeylog import QKeyLog
@@ -108,6 +108,11 @@ class MrRobotoGui(QMainWindow):
 
         self.roboto = MrRobotoStart()
 
+        try:
+            test = list(self.roboto.GetJoints())
+        except:
+            raise RuntimeError("MrRoboto failed to start")
+
         # QKeyLog Setup
         self.commandQueue = Queue()
         self.tsString = TSString()
@@ -161,6 +166,10 @@ class MrRobotoGui(QMainWindow):
 
     def set_state(self, state):
         self.state = state
+        if state.lower() == "safe":
+            self.ui.statusbar.clearMessage()
+        else:
+            self.ui.statusbar.showMessage(state)
         self.ui.stateLabel.setText(state)
 
     def pause_splash_screen(self, message, timeout):
@@ -239,7 +248,9 @@ class MrRobotoGui(QMainWindow):
     @SampleMounted(False)
     def load_cassette(self, _):
         self.ui.currentCassetteLabel.setText(self.ui.cassetteList.currentItem().text())
-        # TODO: Implement correct spec command to move cassette
+        idx = int(self.ui.currentCassetteLabel.text())
+        self.set_state("Loading Cassette")
+        move_sample_stage(idx - 1)
 
     def _current_cassette(self):
         idx = int(self.ui.currentCassetteLabel.text())
@@ -288,6 +299,7 @@ class MrRobotoGui(QMainWindow):
         self.mountedSample = deepcopy(self.grabbedSample)
         self.grabbedSample = None
         self.ui.mountButton.setText("Dismount")
+        self.ui.mountButton.clicked.disconnect(self.mount_sample)
         self.ui.mountButton.clicked.connect(self.dismount_sample)
 
     @RobotoSafe
@@ -301,6 +313,7 @@ class MrRobotoGui(QMainWindow):
         self.mountedSample = None
         self.replace_current()
         self.ui.mountButton.setText("Mount")
+        self.ui.mountButton.clicked.disconnect(self.dismount_sample)
         self.ui.mountButton.clicked.connect(self.mount_sample)
 
     @RobotoSafe
@@ -328,49 +341,50 @@ class MrRobotoGui(QMainWindow):
             code = self.read_scanner_data(1)
             self.set_state("Safe")
             start = time.time()
-            barcode_joints = list(self.roboto.GetJoints())
-            sign = -1
-            while not code:
-                self.roboto.SetJointVel(5)
-                barcode_joints[-1] -= 30
-                barcode_joints[-2] -= 10
-                # print(barcode_joints)
-                code = self.scan_grabbed_sample(barcode_joints, code)
-                if code:
-                    break
-                barcode_joints[-1] += 30
-                barcode_joints[-2] += 10
-                # print(barcode_joints)
-                code = self.scan_grabbed_sample(barcode_joints, code)
-                if code:
-                    break
-                self.roboto.SetJointVel(5)
-                barcode_joints[-1] -= 30
-                barcode_joints[-2] += 10
-                # print(barcode_joints)
-                code = self.scan_grabbed_sample(barcode_joints, code)
-                if code:
-                    break
-                barcode_joints[-1] += 30
-                barcode_joints[-2] -= 10
-                # print(barcode_joints)
-                code = self.scan_grabbed_sample(barcode_joints, code)
-                if code:
-                    break
-                self.roboto.MoveLinRelWRF(0, 0, sign * 25, 0, 0, 0)
-                sign *= -1
-            mr_roboto.SetJointVel(speed)
+            # barcode_joints = list(self.roboto.GetJoints())
+            # sign = -1
+            # while not code:
+            #     self.roboto.SetJointVel(5)
+            #     barcode_joints[-1] -= 30
+            #     barcode_joints[-2] -= 10
+            #     # print(barcode_joints)
+            #     code = self.scan_grabbed_sample(barcode_joints, code)
+            #     if code:
+            #         break
+            #     barcode_joints[-1] += 30
+            #     barcode_joints[-2] += 10
+            #     # print(barcode_joints)
+            #     code = self.scan_grabbed_sample(barcode_joints, code)
+            #     if code:
+            #         break
+            #     self.roboto.SetJointVel(5)
+            #     barcode_joints[-1] -= 30
+            #     barcode_joints[-2] += 10
+            #     # print(barcode_joints)
+            #     code = self.scan_grabbed_sample(barcode_joints, code)
+            #     if code:
+            #         break
+            #     barcode_joints[-1] += 30
+            #     barcode_joints[-2] -= 10
+            #     # print(barcode_joints)
+            #     code = self.scan_grabbed_sample(barcode_joints, code)
+            #     if code:
+            #         break
+            #     self.roboto.MoveLinRelWRF(0, 0, sign * 25, 0, 0, 0)
+            #     sign *= -1
+            # self.roboto.SetJointVel(speed)
             self.replace_current()
-            self.ui.metaDataText.setText(code)
-            cassette = self._current_cassette()
-            self.selectedSample["metaData"]["id"] = code
-            if self.metaDataFrame is not None:
-                try:
-                    meta = self.metaDataFrame.loc[code].to_dict()
-                    self.selectedSample["metaData"].update(meta)
-                except:
-                    traceback.print_exc()
-            cassette.set_metadata(self.selectedSample)
+            if code:
+                self.ui.metaDataText.setText(code)
+                cassette = self._current_cassette()
+                self.selectedSample["metaData"]["id"] = code
+                if self.metaDataFrame is not None:
+                    try:
+                        meta = self.metaDataFrame.loc[code].to_dict()
+                        self.selectedSample["metaData"].update(meta)
+                    except:
+                        traceback.print_exc()
+                cassette.set_metadata(self.selectedSample)
             self.awaitingScan = False
 
     @RobotoSafe
@@ -459,6 +473,19 @@ class MrRobotoGui(QMainWindow):
         pass
 
     def closeEvent(self, event):
+        if self.mountedSample is not None:
+            print(f"Closing while sample {self.mountedSample} is mounted")
+            self.dismount_sample()
+        if self.grabbedSample is not None:
+            print(f"Closing while sample {self.grabbedSample} is grabbed")
+            self.replace_current()
+        print("Deactivating Mr Roboto")
+        self.roboto.MoveJoints(0,0,0,0,0,0)
+        self.roboto.Delay(3)
+        self.roboto.Deactivate()
+        self.roboto.Disconnect()
+        print("Sending kill command to QKeyLog")
         self.commandQueue.put("QUIT")
         self.keylog.wait()
+        print("Closing")
         super(MrRobotoGui, self).closeEvent(event)

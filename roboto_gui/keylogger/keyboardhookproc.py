@@ -7,9 +7,15 @@ from .win_defs import *
 mainPath = os.path.abspath(__file__).split("roboto_gui")[0]
 
 if sys.maxsize > 2**32:
-    dllPath = "keyhookdll\\x64\\keyhookdll.dll"
+    dllPath = os.path.join(
+        mainPath,
+        "roboto_gui\\roboto_gui\\keylogger\\keyhookdll\\x64\\keyhookdll.dll"
+    )
 else:
-    dllPath = "keyhookdll\\Win32\\keyhookdll.dll"
+    dllPath = os.path.join(
+        mainPath,
+        "roboto_gui\\roboto_gui\\keylogger\\keyhookdll\\Win32\\keyhookdll.dll"
+    )
 
 
 class KeyboardHookProc(Process):
@@ -19,9 +25,10 @@ class KeyboardHookProc(Process):
         if commandQueue is None:
             self.commandQueue = Queue()
         else:
-            self.commandQueue = Queue()
+            self.commandQueue = commandQueue
 
     def run(self):
+        print("Starting keyhook dll")
         dll = WinDLL(dllPath)
         hwnd = HWND(self.hwnd)
         res = dll.setMyHook(hwnd)

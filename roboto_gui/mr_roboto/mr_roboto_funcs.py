@@ -1,4 +1,4 @@
-from RobotController import *
+from .RobotController import *
 import msvcrt
 
 # Standard library imports
@@ -7,6 +7,7 @@ import sys, os, glob, fnmatch, re, time
 # Other Imports
 import numpy as np
 import scipy
+from datetime import datetime
 
 from collections import OrderedDict
 from copy import deepcopy
@@ -24,7 +25,7 @@ from xdart.modules.pySSRL_bServer.bServer_funcs import specCommand, wait_until_S
 SampleReadyPose = [145.333, -0.282, 195, 180, 0, -180]
 SampleHeight = 69
 MountReadyPose = [-47.761, -45.143, 351.589, -8.028, -89.263, -70.034]
-MountDistance = 57.5
+MountDistance = 58.0
 BarcodeScanPose = [45.526,-155.890,195.000,-180.000,0.000,-113.000]
 spacing = 25.125
 speed = 25
@@ -252,7 +253,7 @@ def move_sample_stage(cassette_num = 0):
     print('Done', '\n')
 
 def run_absorption_scan():
-    command = f'umv v0gap 0.1; pd nosave; umvr bsx 5; umv tth 71.5'
+    command = f'umv v0gap 0.1; pd nosave; umvr bsx -5; umv tth 71.26'
     try:
         specCommand(command, queue=True)
     except Exception as e:
@@ -270,7 +271,7 @@ def run_absorption_scan():
         sys.exit()
     wait_until_SPECfinished(polling_time=5)
     
-    command = f'umv v0gap 0.75; pd save; umvr bsx -5'
+    command = f'umv v0gap 0.75; pd save; umvr bsx 5'
     try:
         specCommand(command, queue=True)
     except Exception as e:
@@ -280,7 +281,7 @@ def run_absorption_scan():
     wait_until_SPECfinished(polling_time=5)
     
 
-def run_sample_scan(start=4, stop=114.55, steps=110):
+def run_sample_scan(start=3, stop=113.55, steps=110):
     """Function to run sample scan
 
     Arguments:
@@ -314,8 +315,10 @@ def SPEC_scan_sample(remote_path, local_path, samplecode):
     
     # Extract Sample Name from samplecode
     samplenum = samplecode.split()[-1]
+    now = datetime.now()
+    timestamp = now.strftime("%Y-%m-%d-%H%M")
     print(f"Sample number is {samplenum}...")
-    samplename = f"BL21Robot_{samplenum}"
+    samplename = f"BL21Robot_{samplenum}-{timestamp}"
 
     # Remote (SPEC) Computer Paths
     remote_scan_path = f'{remote_path}/scans'
@@ -358,68 +361,61 @@ def MeasureSample(mr_roboto, ax, ay):
     code = ScanSample(mr_roboto)
     print("Sample code is " + str(code))
     mr_roboto.MoveJoints(0,0,0,0,0,0)
-    #mr_roboto.Delay(3)
+    mr_roboto.Delay(3)
     MountSample(mr_roboto)
     mr_roboto.Delay(1)
     mr_roboto.MoveJoints(0,0,0,0,0,0)
-    SPEC_startspin()
-    mr_roboto.Delay(2)
-    remote_path = '~/data/mr_roboto/Jianbo/'
-    local_path  = 'P:\\bl2-1\\mr_roboto\\Jianbo\\'
-    SPEC_scan_sample(remote_path, local_path, code)
-    SPEC_stopspin()
+    #SPEC_startspin()
+    #mr_roboto.Delay(2)
+    #remote_path = '~/data/mr_roboto/Dec2020/'
+    #local_path  = 'P:\\bl2-1\\mr_roboto\\Dec2020\\'
+    #SPEC_scan_sample(remote_path, local_path, code)
+    #SPEC_stopspin()
     DismountSample(mr_roboto)
     ReplaceSample(mr_roboto, ax, ay)
     mr_roboto.MoveJoints(0,0,0,0,0,0)
     mr_roboto.Delay(3)
 
+if __name__ == "__main__":
+    mr_roboto = MrRobotoStart()
+    mr_roboto.Delay(2)
+    mr_roboto.MoveJoints(0,0,0,0,0,0)
 
-mr_roboto = MrRobotoStart()
-mr_roboto.Delay(2)
-mr_roboto.MoveJoints(0,0,0,0,0,0)
+    #move_sample_stage(1)
+    #MeasureSample(mr_roboto, -1,-1)
+    #MeasureSample(mr_roboto, -1,0)
+    #MeasureSample(mr_roboto, -1,1)
+    #MeasureSample(mr_roboto, 0,-1)
+    #MeasureSample(mr_roboto, 0,0)
+    #MeasureSample(mr_roboto, 0,1)
+    #MeasureSample(mr_roboto, 1,-1)
+    #MeasureSample(mr_roboto, 1,0)
+    #MeasureSample(mr_roboto, 1,1)
 
-#move_sample_stage(1)
-#MeasureSample(mr_roboto, -1,-1)
-#MeasureSample(mr_roboto, -1,0)
-#MeasureSample(mr_roboto, -1,1)
-#MeasureSample(mr_roboto, 0,-1)
-#MeasureSample(mr_roboto, 0,0)
-#MeasureSample(mr_roboto, 0,1)
-#MeasureSample(mr_roboto, 1,-1)
-#MeasureSample(mr_roboto, 1,0)
-#MeasureSample(mr_roboto, 1,1)
+    move_sample_stage(0)
+    #MeasureSample(mr_roboto, -1,-1)
+    #MeasureSample(mr_roboto, -1,0)
+    #MeasureSample(mr_roboto, -1,1)
+    #MeasureSample(mr_roboto, 0,-1)
+    MeasureSample(mr_roboto, 0,0)
+    #MeasureSample(mr_roboto, 0,1)
+    #MeasureSample(mr_roboto, 1,-1)
+    #MeasureSample(mr_roboto, 1,0)
+    #MeasureSample(mr_roboto, 1,1)
 
-move_sample_stage(0)
-#MeasureSample(mr_roboto, -1,-1)
-#MeasureSample(mr_roboto, -1,0)
-#MeasureSample(mr_roboto, -1,1)
-#MeasureSample(mr_roboto, 0,-1)
-#MeasureSample(mr_roboto, 0,0)
-#MeasureSample(mr_roboto, 0,1)
-MeasureSample(mr_roboto, 1,-1)
-MeasureSample(mr_roboto, 1,0)
-MeasureSample(mr_roboto, 1,1)
+    #move_sample_stage(-1)
+    #MeasureSample(mr_roboto, -1,-1)
+    #MeasureSample(mr_roboto, -1,0)
+    #MeasureSample(mr_roboto, -1,1)
+    #MeasureSample(mr_roboto, 0,-1)
+    #MeasureSample(mr_roboto, 0,0)
+    #MeasureSample(mr_roboto, 0,1)
+    #MeasureSample(mr_roboto, 1,-1)
+    #MeasureSample(mr_roboto, 1,0)
+    #MeasureSample(mr_roboto, 1,1)
 
-move_sample_stage(-1)
-MeasureSample(mr_roboto, -1,-1)
-MeasureSample(mr_roboto, -1,0)
-MeasureSample(mr_roboto, -1,1)
-MeasureSample(mr_roboto, 0,-1)
-MeasureSample(mr_roboto, 0,0)
-MeasureSample(mr_roboto, 0,1)
-MeasureSample(mr_roboto, 1,-1)
-MeasureSample(mr_roboto, 1,0)
-MeasureSample(mr_roboto, 1,1)
+    mr_roboto.MoveJoints(0,0,0,0,0,0)
+    mr_roboto.Delay(3)
 
-move_sample_stage(1)
-MeasureSample(mr_roboto, -1,-1)
-MeasureSample(mr_roboto, -1,0)
-MeasureSample(mr_roboto, -1,1)
-MeasureSample(mr_roboto, 0,-1)
-MeasureSample(mr_roboto, 0,0)
-
-mr_roboto.MoveJoints(0,0,0,0,0,0)
-mr_roboto.Delay(3)
-
-mr_roboto.Deactivate()
-mr_roboto.Disconnect()
+    mr_roboto.Deactivate()
+    mr_roboto.Disconnect()
