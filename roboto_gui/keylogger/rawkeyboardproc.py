@@ -168,7 +168,7 @@ class RawKeyboardProc(Process):
                     message["key"] = ' '
                 
                 elif newChar[0] == "ENTER":
-                    message["key"] = ''
+                    message["key"] = '\n'
 
                 elif self.shift_down:
                     message["key"] = newChar[1]

@@ -132,17 +132,21 @@ class MrRobotoGui(QMainWindow):
         # File
         self.dataFilePath = ""
         self.metaDataFrame = None
+        self.specPath = ""
+        self.localDataPath = 'P:/bl2-1/'
         self.ui.actionLoadMetadata.triggered.connect(self.load_metadata_file)
         self.ui.actionSavePath.triggered.connect(self.set_pd_save_path)
+        self.ui.actionSetSpecFile.triggered.connect(self.set_spec_file)
 
         # Cassette pane setup
         self.cassettes = [SampleCassette(self)]
         self.cassettes[0].sigSampleClicked.connect(self.sample_clicked)
         self.ui.cassetteStack.addWidget(self.cassettes[0])
-        self.ui.cassetteList.addItem("1")
+        self.ui.cassetteList.addItem("0")
         self.ui.cassetteList.setCurrentRow(0)
         self.ui.cassetteList.itemClicked.connect(self.set_cassette)
         self.ui.loadButton.clicked.connect(self.load_cassette)
+        self.load_cassette(None)
 
         # Sample scan pane setup
         self.ui.mountButton.clicked.connect(self.mount_sample)
@@ -163,6 +167,50 @@ class MrRobotoGui(QMainWindow):
         self.ui.timePowerP.valueChanged.connect(self.estimate_time_P)
         self.ui.stepPowerP.valueChanged.connect(self.estimate_time_P)
         self.ui.stepsSpinBoxP.valueChanged.connect(self.estimate_time_P)
+    
+    def check_state(self, safeState=True, grabbed=False, mounted=False, cassette=True):
+        if safeState is not None:
+            if safeState:
+                if self.state.lower() != "safe":
+                    print(f"Cannot execute, robot not safe")
+                    return False
+        
+        if grabbed is not None:
+            if grabbed:
+                if self.grabbedSample is None:
+                    print(f"Cannot execute without a sample grabbed")
+                    return False
+            else:
+                if self.grabbedSample is not None:
+                    print(f"Cannot execute with a sample grabbed")
+                    return False
+        
+        if mounted is not None:
+            if mounted:
+                if self.mountedSample is None:
+                    print(f"Cannot execute without a sample mounted")
+                    return False
+            else:
+                if self.mountedSample is not None:
+                    print(f"Cannot execute with a sample mounted")
+                    return False
+        
+        if cassette is not None:
+            if cassette:
+                if self.ui.currentCassetteLabel.text() != self.ui.cassetteList.currentItem().text():
+                    reply = QtWidgets.QMessageBox.question(
+                        self,
+                        "test",
+                        "Scanning this requires loading a new cassette, proceed?",
+                        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                        QtWidgets.QMessageBox.No
+                    )
+                    if reply == QtWidgets.QMessageBox.Yes:
+                        self.load_cassette(None)
+                    else:
+                        return False
+        
+        return True
 
     def set_state(self, state):
         self.state = state
@@ -189,31 +237,59 @@ class MrRobotoGui(QMainWindow):
                 self.metaDataFrame = None
                 traceback.print_exc()
 
+    def local_to_remote(self, dirname):
+        if dirname[:len(self.localDataPath)] != self.localDataPath:
+            print("invalid path")
+            return
+        return '~/data/' + dirname.split(self.localDataPath)[-1]
+
     def set_pd_save_path(self, q=None):
-        dirname = QtWidgets.QFileDialog.getExistingDirectory(self, "PD Save Path")
+        dirname = QtWidgets.QFileDialog.getExistingDirectory(self, "PD Save Path", self.localDataPath)
         if dirname != "":
-            command = f'pd savepath {dirname}'
+            remote = self.local_to_remote(dirname)
+            if remote is None:
+                return
+            
+            command = f'pd savepath {remote}'
             try:
+                print(command)
                 specCommand(command, queue=True)
             except:
                 traceback.print_exc()
 
     def set_spec_file(self, q=None):
-        filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "SPEC File")
+        dirname = QtWidgets.QFileDialog.getExistingDirectory(self, "SPEC Save Folder", self.localDataPath)
+        if dirname != "":
+            remote = self.local_to_remote(dirname)
+            if remote is not None:
+                self.specPath = remote + "/"
+    
+    def create_SPEC_file(self):
+        """Create new calibration spec file with date time stamp"""
+        code = self.mountedSample["metaData"].get("id", "unscanned")
+        if code == "unscanned":
+            row = int(self.mountedSample["row"]) + 1
+            column = int(self.mountedSample["column"]) + 1
+            idx = row * 3 + column
+            cidx = (len(self.cassettes) // 2) + int(self.ui.currentCassetteLabel.text()) + 1
+            samplenum = "unsc_" + str(1000*cidx + idx)
+        else:
+            samplenum = code.split()[-1]
+        now = datetime.now()
+        timestamp = now.strftime("%Y-%m-%d-%H%M")
+        print(f"Sample number is {samplenum}...")
+        samplename = f"BL21Robot_{samplenum}-{timestamp}"
+        command = f'newfile {self.specPath}{samplename}'
+        try:
+            print(command)
+            specCommand(command, queue=True)
+        except:
+            traceback.print_exc()
 
-        if filename != "":
-            path, name = os.path.split(filename)
-
-            command = f'newfile {path}/{name}'
-            try:
-                specCommand(command, queue=True)
-            except:
-                traceback.print_exc()
-
-    @RobotoSafe
-    @SampleGrabbed(False)
-    @SampleMounted(False)
+    # Check state
     def show_setup(self, _):
+        if not self.check_state():
+            return
         self.setupWidget.cassettesSpinBox.setValue(len(self.cassettes))
         self.setupWidget.show()
 
@@ -232,39 +308,44 @@ class MrRobotoGui(QMainWindow):
                 self.ui.cassetteStack.removeWidget(w)
                 self.ui.cassetteList.takeItem(len(self.cassettes))
             newCassettes = self.setupWidget.cassettesSpinBox.value()
+            adj = newCassettes // 2
             for i in range(newCassettes):
                 newCassette = SampleCassette(self)
                 newCassette.sigSampleClicked.connect(self.sample_clicked)
                 self.cassettes.append(newCassette)
                 self.ui.cassetteStack.addWidget(self.cassettes[i])
-                self.ui.cassetteList.addItem(str(i + 1))
+                self.ui.cassetteList.addItem(str(i - adj))
             self.ui.cassetteList.setCurrentRow(0)
         self.setupWidget.hide()
 
     def set_cassette(self, q):
-        self.ui.cassetteStack.setCurrentIndex(int(q.text()) - 1)
+        self.ui.cassetteStack.setCurrentIndex(
+            (len(self.cassettes) // 2) + int(q.text())
+        )
 
-    @SampleGrabbed(False)
-    @SampleMounted(False)
+    # Check state
     def load_cassette(self, _):
+        if not self.check_state(safeState=None, cassette=None):
+            return
         self.ui.currentCassetteLabel.setText(self.ui.cassetteList.currentItem().text())
         idx = int(self.ui.currentCassetteLabel.text())
         self.set_state("Loading Cassette")
-        move_sample_stage(idx - 1)
+        move_sample_stage(idx)
+        self.set_state("Safe")
 
     def _current_cassette(self):
-        idx = int(self.ui.currentCassetteLabel.text())
-        return self.cassettes[idx - 1]
+        idx = (len(self.cassettes) // 2) + int(self.ui.currentCassetteLabel.text())
+        return self.cassettes[idx]
 
     def sample_clicked(self, data):
         jdata = json.loads(data)
         self.selectedSample = jdata
         self.ui.metaDataText.setText(data)
 
-    @RobotoSafe
-    @SampleMounted(False)
-    @SampleGrabbed(False)
+    # Check state
     def grab_selected_sample(self):
+        if not self.check_state():
+            return
         self.set_state("Grabbing")
         GrabSample(
             self.roboto,
@@ -274,9 +355,10 @@ class MrRobotoGui(QMainWindow):
         self.grabbedSample = deepcopy(self.selectedSample)
         self.set_state("Safe")
 
-    @RobotoSafe
-    @SampleGrabbed(True)
+    # Check state
     def replace_current(self):
+        if not self.check_state(grabbed=True, mounted=None, cassette=None):
+            return
         self.set_state("Replacing")
         ReplaceSample(
             self.roboto,
@@ -286,61 +368,55 @@ class MrRobotoGui(QMainWindow):
         self.set_state("Safe")
         self.grabbedSample = None
 
-    @RobotoSafe
-    @SampleMounted(False)
-    @SampleGrabbed(False)
+    # Check state
     def mount_sample(self, _=None):
+        if not self.check_state():
+            return
         self.grab_selected_sample()
-        id = self.grabbedSample["metaData"].get("id", "unscanned")
-        self.ui.currentSampleLabel.setText(id)
         self.set_state("Mounting")
         MountSample(self.roboto)
         self.set_state("Safe")
-        self.mountedSample = deepcopy(self.grabbedSample)
+        self._set_mounted_sample(deepcopy(self.grabbedSample))
+        self.create_SPEC_file()
         self.grabbedSample = None
         self.ui.mountButton.setText("Dismount")
         self.ui.mountButton.clicked.disconnect(self.mount_sample)
         self.ui.mountButton.clicked.connect(self.dismount_sample)
+    
+    def _set_mounted_sample(self, sample):
+        if sample is None:
+            self.ui.currentSampleLabel.setText("None")
+        else:
+            id = sample["metaData"].get("id", "unscanned")
+            self.ui.currentSampleLabel.setText(id)
+        self.mountedSample = sample
 
-    @RobotoSafe
-    @SampleMounted(True)
-    @SampleGrabbed(False)
+    # Check state
     def dismount_sample(self, _=None):
+        if not self.check_state(mounted=True, cassette=None):
+            return
         self.set_state("Dismounting")
         DismountSample(self.roboto)
         self.set_state("Safe")
         self.grabbedSample = deepcopy(self.mountedSample)
-        self.mountedSample = None
+        self._set_mounted_sample(None)
         self.replace_current()
         self.ui.mountButton.setText("Mount")
         self.ui.mountButton.clicked.disconnect(self.dismount_sample)
         self.ui.mountButton.clicked.connect(self.mount_sample)
 
-    @RobotoSafe
-    @SampleGrabbed(False)
+    # Check state
     def scan_sample(self, _=None, sampleIDX=None):
-        if self.ui.currentCassetteLabel.text() != self.ui.cassetteList.currentItem().text():
-            reply = QtWidgets.QMessageBox.question(
-                self,
-                "test",
-                "Scanning this requires loading a new cassette, proceed?",
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-                QtWidgets.QMessageBox.No
-            )
-            if reply == QtWidgets.QMessageBox.Yes:
-                self.load_cassette(None)
-            else:
-                return
-        if not self.awaitingScan and self.selectedSample is not None:
-            self.awaitingScan = True
+        if not self.check_state():
+            return
+        if self.selectedSample is not None:
             self.ui.statusbar.showMessage("Scanning Sample")
             self.grab_selected_sample()
             self.commandQueue.put("CLEAR")
             self.set_state("Scanning")
             self.roboto.MovePose(*BarcodeScanPose)
-            code = self.read_scanner_data(1)
+            self.pause_splash_screen("Scanning", 1)
             self.set_state("Safe")
-            start = time.time()
             # barcode_joints = list(self.roboto.GetJoints())
             # sign = -1
             # while not code:
@@ -374,22 +450,26 @@ class MrRobotoGui(QMainWindow):
             #     sign *= -1
             # self.roboto.SetJointVel(speed)
             self.replace_current()
-            if code:
+            rawCode = self.read_scanner_data(1)
+            if rawCode:
+                code = rawCode.split('\n')[0]
                 self.ui.metaDataText.setText(code)
                 cassette = self._current_cassette()
                 self.selectedSample["metaData"]["id"] = code
                 if self.metaDataFrame is not None:
                     try:
                         meta = self.metaDataFrame.loc[code].to_dict()
+                        self.ui.metaDataText.setText(json.dumps(meta))
                         self.selectedSample["metaData"].update(meta)
                     except:
                         traceback.print_exc()
                 cassette.set_metadata(self.selectedSample)
             self.awaitingScan = False
 
-    @RobotoSafe
-    @SampleGrabbed(True)
+    # Check state
     def scan_grabbed_sample(self, barcode_joints, code):
+        if not self.check_state(grabbed=True, mounted=None, cassette=None):
+            return
         self.set_state("Scanning")
         self.roboto.MoveJoints(*barcode_joints)
         code = self.read_scanner_data(1)
@@ -404,10 +484,10 @@ class MrRobotoGui(QMainWindow):
     def handle_buffer(self, buffer):
         print(buffer)
 
-    @RobotoSafe
-    @SampleGrabbed(False)
-    @SampleMounted(False)
+    # Check state
     def scan_all_samples(self, _):
+        if not self.check_state():
+            return
         pass
 
     def estimate_time_A(self, _):
@@ -426,8 +506,10 @@ class MrRobotoGui(QMainWindow):
             estimate = 0.0
         self.ui.estimatedTimeP.setText(f"Estimated time: {estimate}")
 
-    @SampleMounted(True)
+    # Check State
     def run_sample(self, _):
+        if not self.check_state(safeState=None, grabbed=None, mounted=True, cassette=None):
+            return
         if self.ui.scanComboBox.currentText() == "ascan":
             motor = self.ui.motorSelectorA.currentText()
             start = self.ui.startSpinBoxA.value()
@@ -461,15 +543,14 @@ class MrRobotoGui(QMainWindow):
                 traceback.print_exc()
 
     def _wait_for_spec(self):
-        self.set_state("Running")
+        self.set_state("Waiting for SPEC")
         wait_until_SPECfinished(5)
-        self.ui.statusbar.clearMessage()
         self.set_state("Safe")
 
-    @RobotoSafe
-    @SampleGrabbed(False)
-    @SampleMounted(False)
+    # Check state
     def run_all_samples(self, _):
+        if not self.check_state():
+            return
         pass
 
     def closeEvent(self, event):
