@@ -298,7 +298,7 @@ class Ui_MainWindow(object):
         self.actionSetup.setText(_translate("MainWindow", "Setup"))
         self.actionLoadMetadata.setText(_translate("MainWindow", "Load Metadata"))
         self.actionSavePath.setText(_translate("MainWindow", "Set PD Save Path"))
-        self.actionSetSpecFile.setText(_translate("MainWindow", "Set Spec File"))
+        self.actionSetSpecFile.setText(_translate("MainWindow", "Set Spec Path"))
 
 
 if __name__ == "__main__":

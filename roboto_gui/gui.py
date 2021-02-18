@@ -1,6 +1,4 @@
 import json
-from copy import deepcopy
-from functools import wraps
 from queue import Queue
 import traceback
 
@@ -45,52 +43,6 @@ class SetupWidget(QWidget):
 
     def cancel_clicked(self, _):
         self.sigFinished.emit(-1)
-
-
-def SampleMounted(mounted=True):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            if mounted:
-                if self.mountedSample is None:
-                    print(f"Cannot execute {func.__name__} without a sample mounted")
-                else:
-                    return func(self, *args, **kwargs)
-            else:
-                if self.mountedSample is not None:
-                    print(f"Cannot execute {func.__name__} with a sample mounted")
-                else:
-                    return func(self, *args, **kwargs)
-        return wrapper
-    return decorator
-
-
-def SampleGrabbed(grabbed=True):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            if grabbed:
-                if self.grabbedSample is None:
-                    print(f"Cannot execute {func.__name__} without a sample grabbed")
-                else:
-                    return func(self, *args, **kwargs)
-            else:
-                if self.grabbedSample is not None:
-                    print(f"Cannot execute {func.__name__} with a sample grabbed")
-                else:
-                    return func(self, *args, **kwargs)
-        return wrapper
-    return decorator
-
-
-def RobotoSafe(func):
-    @wraps(func)
-    def wrapper(self, *args, **kwargs):
-        if self.state.lower() != "safe":
-            print(f"Cannot execute {func.__name__}, robot not safe")
-        else:
-            return func(self, *args, **kwargs)
-    return wrapper
 
 
 class MrRobotoGui(QMainWindow):
@@ -167,48 +119,76 @@ class MrRobotoGui(QMainWindow):
         self.ui.timePowerP.valueChanged.connect(self.estimate_time_P)
         self.ui.stepPowerP.valueChanged.connect(self.estimate_time_P)
         self.ui.stepsSpinBoxP.valueChanged.connect(self.estimate_time_P)
+
+    def _check_safe(self, safeState):
+        if safeState:
+            if self.state.lower() != "safe":
+                print(f"Cannot execute, robot not safe")
+                return False
+        return True
+
+    def _check_grabbed(self, grabbed):
+        if grabbed:
+            if self.grabbedSample is None:
+                print(f"Cannot execute without a sample grabbed")
+                return False
+        else:
+            if self.grabbedSample is not None:
+                print(f"Cannot execute with a sample grabbed")
+                return False
+        return True
+
+    def _check_mounted(self, mounted):
+        if mounted:
+            if self.mountedSample is None:
+                print(f"Cannot execute without a sample mounted")
+                return False
+        else:
+            if self.mountedSample is not None:
+                print(f"Cannot execute with a sample mounted")
+                return False
+        return True
+
+    def _check_cassette(self, cassette):
+        if cassette:
+            if self.ui.currentCassetteLabel.text() != self.ui.cassetteList.currentItem().text():
+                reply = QtWidgets.QMessageBox.question(
+                    self,
+                    "test",
+                    "Scanning this requires loading a new cassette, proceed?",
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                    QtWidgets.QMessageBox.No
+                )
+                if reply == QtWidgets.QMessageBox.Yes:
+                    self.load_cassette(None)
+                else:
+                    return False
+        return True
     
     def check_state(self, safeState=True, grabbed=False, mounted=False, cassette=True):
+        """
+
+        Args:
+            cassette (bool, None):
+            mounted (bool, None):
+            grabbed (bool, None):
+            safeState (bool, None):
+        """
         if safeState is not None:
-            if safeState:
-                if self.state.lower() != "safe":
-                    print(f"Cannot execute, robot not safe")
-                    return False
+            if not self._check_safe(safeState):
+                return False
         
         if grabbed is not None:
-            if grabbed:
-                if self.grabbedSample is None:
-                    print(f"Cannot execute without a sample grabbed")
-                    return False
-            else:
-                if self.grabbedSample is not None:
-                    print(f"Cannot execute with a sample grabbed")
-                    return False
+            if not self._check_grabbed(grabbed):
+                return False
         
         if mounted is not None:
-            if mounted:
-                if self.mountedSample is None:
-                    print(f"Cannot execute without a sample mounted")
-                    return False
-            else:
-                if self.mountedSample is not None:
-                    print(f"Cannot execute with a sample mounted")
-                    return False
+            if not self._check_mounted(mounted):
+                return False
         
         if cassette is not None:
-            if cassette:
-                if self.ui.currentCassetteLabel.text() != self.ui.cassetteList.currentItem().text():
-                    reply = QtWidgets.QMessageBox.question(
-                        self,
-                        "test",
-                        "Scanning this requires loading a new cassette, proceed?",
-                        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-                        QtWidgets.QMessageBox.No
-                    )
-                    if reply == QtWidgets.QMessageBox.Yes:
-                        self.load_cassette(None)
-                    else:
-                        return False
+            if not self._check_cassette(cassette):
+                return False
         
         return True
 
