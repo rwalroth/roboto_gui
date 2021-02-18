@@ -2,7 +2,6 @@ from multiprocessing import Queue
 import json
 
 from PyQt5.QtCore import QThread, pyqtSignal
-
 from .keylogger import RawKeyboardProc, KeyboardHookProc, UWM_NEWNAME_MSG
 from .keylogger.win_defs import RegisterWindowMessage, LPCWSTR, PostMessage
 from ctypes.wintypes import HWND

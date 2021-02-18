@@ -496,7 +496,7 @@
   </action>
   <action name="actionSetSpecFile">
    <property name="text">
-    <string>Set Spec File</string>
+    <string>Set Spec Path</string>
    </property>
   </action>
  </widget>

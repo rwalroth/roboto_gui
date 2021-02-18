@@ -8,11 +8,11 @@ import qdarkstyle
 from roboto_gui.gui import MrRobotoGui
 
 
-def myexcepthook(exctype, value, traceback):
+def myexcepthook(exctype, value, tb):
     for p in active_children():
         print(f"terminating {p}")
         p.terminate()
-    sys.__excepthook__(exctype, value, traceback)
+    sys.__excepthook__(exctype, value, tb)
     sys.exit(-1)
 
 
