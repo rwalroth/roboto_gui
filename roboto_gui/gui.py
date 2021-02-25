@@ -542,11 +542,6 @@ class MrRobotoGui(QMainWindow):
         if self.grabbedSample is not None:
             print(f"Closing while sample {self.grabbedSample} is grabbed")
             self.replace_current()
-        print("Deactivating Mr Roboto")
-        self.roboto.MoveJoints(0,0,0,0,0,0)
-        self.roboto.Delay(3)
-        self.roboto.Deactivate()
-        self.roboto.Disconnect()
         print("Sending kill command to QKeyLog")
         self.commandQueue.put("QUIT")
         self.keylog.wait()
