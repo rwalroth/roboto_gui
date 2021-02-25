@@ -488,7 +488,8 @@ class MrRobotoGui(QMainWindow):
 
     # Check State
     def run_sample(self, _):
-        if not self.check_state(safeState=None, grabbed=None, mounted=True, cassette=None):
+        if not self.check_state(safeState=None, grabbed=None, mounted=True,
+                                cassette=None):
             return
         if self.ui.scanComboBox.currentText() == "ascan":
             motor = self.ui.motorSelectorA.currentText()
@@ -498,7 +499,8 @@ class MrRobotoGui(QMainWindow):
             count = self.ui.timeSpinBoxA.value()
             print(f"ascan {motor} {start} {stop} {steps} {count}")
             try:
-                specCommand(f"ascan {motor} {start} {stop} {steps} {count}", queue=True)
+                specCommand(f"ascan {motor} {start} {stop} {steps} {count}",
+                            queue=True)
                 self.ui.statusbar.showMessage("ascan running")
                 self._wait_for_spec()
             except:
