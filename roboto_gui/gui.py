@@ -1,6 +1,8 @@
 import json
 from queue import Queue
 import traceback
+from threading import RLock
+from collections import deque
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import QWidget, QMainWindow
@@ -13,6 +15,7 @@ from .sample_cassette import SampleCassette
 from .qkeylog import QKeyLog
 from .pySSRL_bServer.bServer_funcs import specCommand, wait_until_SPECfinished
 from .tsstring import TSString
+from .RobotoThread import RobotoThread
 
 
 class SetupWidget(QWidget):
@@ -46,7 +49,7 @@ class SetupWidget(QWidget):
 
 
 class MrRobotoGui(QMainWindow):
-    def __init__(self, parent=None):
+    def __init__(self, robotoRequired=True, parent=None):
         super(MrRobotoGui, self).__init__(parent)
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
@@ -54,16 +57,15 @@ class MrRobotoGui(QMainWindow):
         self.awaitingScan = False
         self.splash = QtWidgets.QSplashScreen(self)
 
-        self.mountedSample = None
-        self.grabbedSample = None
+        self.qLock = RLock()
+        self.taskQueue = deque([])
+        self.robotoThread = RobotoThread(self.qLock, self.taskQueue, robotoRequired, self)
+        self.robotoThread.stateChanged.connect(self.set_state)
+        self.robotoThread.createSpecFile.connect(self.create_SPEC_file)
+        self.robotoThread.sampleMounted.connect(self._set_mounted_sample)
+        self.robotoThread.start()
+
         self.selectedSample = None
-
-        self.roboto = MrRobotoStart()
-
-        try:
-            test = list(self.roboto.GetJoints())
-        except:
-            raise RuntimeError("MrRoboto failed to start")
 
         # QKeyLog Setup
         self.commandQueue = Queue()
@@ -120,78 +122,6 @@ class MrRobotoGui(QMainWindow):
         self.ui.stepPowerP.valueChanged.connect(self.estimate_time_P)
         self.ui.stepsSpinBoxP.valueChanged.connect(self.estimate_time_P)
 
-    def _check_safe(self, safeState):
-        if safeState:
-            if self.state.lower() != "safe":
-                print(f"Cannot execute, robot not safe")
-                return False
-        return True
-
-    def _check_grabbed(self, grabbed):
-        if grabbed:
-            if self.grabbedSample is None:
-                print(f"Cannot execute without a sample grabbed")
-                return False
-        else:
-            if self.grabbedSample is not None:
-                print(f"Cannot execute with a sample grabbed")
-                return False
-        return True
-
-    def _check_mounted(self, mounted):
-        if mounted:
-            if self.mountedSample is None:
-                print(f"Cannot execute without a sample mounted")
-                return False
-        else:
-            if self.mountedSample is not None:
-                print(f"Cannot execute with a sample mounted")
-                return False
-        return True
-
-    def _check_cassette(self, cassette):
-        if cassette:
-            if self.ui.currentCassetteLabel.text() != self.ui.cassetteList.currentItem().text():
-                reply = QtWidgets.QMessageBox.question(
-                    self,
-                    "test",
-                    "Scanning this requires loading a new cassette, proceed?",
-                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-                    QtWidgets.QMessageBox.No
-                )
-                if reply == QtWidgets.QMessageBox.Yes:
-                    self.load_cassette(None)
-                else:
-                    return False
-        return True
-    
-    def check_state(self, safeState=True, grabbed=False, mounted=False, cassette=True):
-        """
-
-        Args:
-            cassette (bool, None):
-            mounted (bool, None):
-            grabbed (bool, None):
-            safeState (bool, None):
-        """
-        if safeState is not None:
-            if not self._check_safe(safeState):
-                return False
-        
-        if grabbed is not None:
-            if not self._check_grabbed(grabbed):
-                return False
-        
-        if mounted is not None:
-            if not self._check_mounted(mounted):
-                return False
-        
-        if cassette is not None:
-            if not self._check_cassette(cassette):
-                return False
-        
-        return True
-
     def set_state(self, state):
         self.state = state
         if state.lower() == "safe":
@@ -244,9 +174,8 @@ class MrRobotoGui(QMainWindow):
             if remote is not None:
                 self.specPath = remote + "/"
     
-    def create_SPEC_file(self):
+    def create_SPEC_file(self, code):
         """Create new calibration spec file with date time stamp"""
-        code = self.mountedSample["metaData"].get("id", "unscanned")
         if code == "unscanned":
             row = int(self.mountedSample["row"]) + 1
             column = int(self.mountedSample["column"]) + 1
@@ -303,15 +232,18 @@ class MrRobotoGui(QMainWindow):
             (len(self.cassettes) // 2) + int(q.text())
         )
 
-    # Check state
-    def load_cassette(self, _):
-        if not self.check_state(safeState=None, cassette=None):
-            return
-        self.ui.currentCassetteLabel.setText(self.ui.cassetteList.currentItem().text())
+    def load_cassette(self):
         idx = int(self.ui.currentCassetteLabel.text())
-        self.set_state("Loading Cassette")
-        move_sample_stage(idx)
-        self.set_state("Safe")
+        with self.qLock:
+            self.taskQueue.append(
+                {
+                    "task": "load_cassette",
+                    "data": idx
+                }
+            )
+
+    def cassette_loaded(self, idx):
+        self.ui.currentCassetteLabel.setText(idx)
 
     def _current_cassette(self):
         idx = (len(self.cassettes) // 2) + int(self.ui.currentCassetteLabel.text())
@@ -322,54 +254,25 @@ class MrRobotoGui(QMainWindow):
         self.selectedSample = jdata
         self.ui.metaDataText.setText(data)
 
-    # Check state
-    def grab_selected_sample(self):
-        if not self.check_state():
-            return
-        self.set_state("Grabbing")
-        GrabSample(
-            self.roboto,
-            int(self.selectedSample["column"]),
-            int(self.selectedSample["row"])
-        )
-        self.grabbedSample = deepcopy(self.selectedSample)
-        self.set_state("Safe")
-
-    # Check state
-    def replace_current(self):
-        if not self.check_state(grabbed=True, mounted=None, cassette=None):
-            return
-        self.set_state("Replacing")
-        ReplaceSample(
-            self.roboto,
-            int(self.grabbedSample["column"]),
-            int(self.grabbedSample["row"])
-        )
-        self.set_state("Safe")
-        self.grabbedSample = None
-
-    # Check state
     def mount_sample(self, _=None):
-        if not self.check_state():
-            return
-        self.grab_selected_sample()
-        self.set_state("Mounting")
-        MountSample(self.roboto)
-        self.set_state("Safe")
-        self._set_mounted_sample(deepcopy(self.grabbedSample))
-        self.create_SPEC_file()
-        self.grabbedSample = None
+        with self.qLock:
+            self.taskQueue.append(
+                {
+                    "task": "mount_sample",
+                    "data": deepcopy(self.selectedSample)
+                }
+            )
         self.ui.mountButton.setText("Dismount")
         self.ui.mountButton.clicked.disconnect(self.mount_sample)
         self.ui.mountButton.clicked.connect(self.dismount_sample)
-    
-    def _set_mounted_sample(self, sample):
+
+    def _set_mounted_sample(self, jsample):
+        sample = json.loads(jsample)
         if sample is None:
             self.ui.currentSampleLabel.setText("None")
         else:
             id = sample["metaData"].get("id", "unscanned")
             self.ui.currentSampleLabel.setText(id)
-        self.mountedSample = sample
 
     # Check state
     def dismount_sample(self, _=None):
@@ -397,38 +300,6 @@ class MrRobotoGui(QMainWindow):
             self.roboto.MovePose(*BarcodeScanPose)
             self.pause_splash_screen("Scanning", 1)
             self.set_state("Safe")
-            # barcode_joints = list(self.roboto.GetJoints())
-            # sign = -1
-            # while not code:
-            #     self.roboto.SetJointVel(5)
-            #     barcode_joints[-1] -= 30
-            #     barcode_joints[-2] -= 10
-            #     # print(barcode_joints)
-            #     code = self.scan_grabbed_sample(barcode_joints, code)
-            #     if code:
-            #         break
-            #     barcode_joints[-1] += 30
-            #     barcode_joints[-2] += 10
-            #     # print(barcode_joints)
-            #     code = self.scan_grabbed_sample(barcode_joints, code)
-            #     if code:
-            #         break
-            #     self.roboto.SetJointVel(5)
-            #     barcode_joints[-1] -= 30
-            #     barcode_joints[-2] += 10
-            #     # print(barcode_joints)
-            #     code = self.scan_grabbed_sample(barcode_joints, code)
-            #     if code:
-            #         break
-            #     barcode_joints[-1] += 30
-            #     barcode_joints[-2] -= 10
-            #     # print(barcode_joints)
-            #     code = self.scan_grabbed_sample(barcode_joints, code)
-            #     if code:
-            #         break
-            #     self.roboto.MoveLinRelWRF(0, 0, sign * 25, 0, 0, 0)
-            #     sign *= -1
-            # self.roboto.SetJointVel(speed)
             self.replace_current()
             rawCode = self.read_scanner_data(1)
             if rawCode:
@@ -536,13 +407,13 @@ class MrRobotoGui(QMainWindow):
         pass
 
     def closeEvent(self, event):
-        if self.mountedSample is not None:
-            print(f"Closing while sample {self.mountedSample} is mounted")
-            self.dismount_sample()
-        if self.grabbedSample is not None:
-            print(f"Closing while sample {self.grabbedSample} is grabbed")
-            self.replace_current()
         print("Sending kill command to QKeyLog")
+        with self.qLock:
+            if self.taskQueue:
+                self.taskQueue[0] = {"task": "finish"}
+            else:
+                self.taskQueue.append({"task": "finish"})
+        self.robotoThread.wait()
         self.commandQueue.put("QUIT")
         self.keylog.wait()
         print("Closing")

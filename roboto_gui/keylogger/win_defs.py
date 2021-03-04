@@ -56,6 +56,13 @@ PostMessage.argtypes = (HWND, UINT, WPARAM, LPARAM)
 PeekMessage = windll.user32.PeekMessageW
 PeekMessage.argtypes = (LPMSG, HWND, UINT, UINT, UINT)
 
+TranslateMessage = windll.user32.TranslateMessage
+TranslateMessage.argtypes = (LPMSG,)
+
+
+DispatchMessage = windll.user32.DispatchMessageW
+DispatchMessage.argtypes = (LPMSG,)
+
 SetWindowsHookEx = windll.user32.SetWindowsHookExW
 SetWindowsHookEx.errcheck = errcheck_bool
 SetWindowsHookEx.restype = HHOOK
