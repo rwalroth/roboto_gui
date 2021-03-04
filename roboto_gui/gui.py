@@ -5,7 +5,7 @@ from threading import RLock
 from collections import deque
 
 from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtWidgets import QWidget, QMainWindow
+from PyQt5.QtWidgets import QWidget, QMainWindow, QMessageBox
 
 import pandas as pd
 
@@ -16,6 +16,7 @@ from .qkeylog import QKeyLog
 from .pySSRL_bServer.bServer_funcs import specCommand, wait_until_SPECfinished
 from .tsstring import TSString
 from .RobotoThread import RobotoThread
+from .QueueWidget import QueueWidget
 
 
 class SetupWidget(QWidget):
@@ -43,9 +44,11 @@ class SetupWidget(QWidget):
 
     def apply_clicked(self, _):
         self.sigFinished.emit(1)
+        self.close()
 
     def cancel_clicked(self, _):
         self.sigFinished.emit(-1)
+        self.close()
 
 
 class MrRobotoGui(QMainWindow):
@@ -57,24 +60,17 @@ class MrRobotoGui(QMainWindow):
         self.awaitingScan = False
         self.splash = QtWidgets.QSplashScreen(self)
 
-        self.qLock = RLock()
-        self.taskQueue = deque([])
-        self.robotoThread = RobotoThread(self.qLock, self.taskQueue, robotoRequired, self)
+        self.taskQueue = QueueWidget(self)
+        self.taskLayout = QtWidgets.QHBoxLayout()
+        self.ui.queueFrame.setLayout(self.taskLayout)
+        self.taskLayout.addWidget(self.taskQueue)
+        self.robotoThread = RobotoThread(self.taskQueue, robotoRequired, self)
         self.robotoThread.stateChanged.connect(self.set_state)
         self.robotoThread.createSpecFile.connect(self.create_SPEC_file)
         self.robotoThread.sampleMounted.connect(self._set_mounted_sample)
-        self.robotoThread.start()
+        self.robotoThread.newKeyboard.connect(self.new_keyboard)
 
         self.selectedSample = None
-
-        # QKeyLog Setup
-        self.commandQueue = Queue()
-        self.tsString = TSString()
-        self.keylog = QKeyLog(self.commandQueue, self.tsString, parent=self)
-        self.keylog.sigKeyboard.connect(self.new_keyboard)
-        self.keylog.sigBuffer.connect(self.handle_buffer)
-        self.keylog.start()
-        self.timer = QtCore.QTimer()
 
         # Menu bar setup
         # Setup
@@ -100,7 +96,7 @@ class MrRobotoGui(QMainWindow):
         self.ui.cassetteList.setCurrentRow(0)
         self.ui.cassetteList.itemClicked.connect(self.set_cassette)
         self.ui.loadButton.clicked.connect(self.load_cassette)
-        self.load_cassette(None)
+        self.load_cassette()
 
         # Sample scan pane setup
         self.ui.mountButton.clicked.connect(self.mount_sample)
@@ -121,6 +117,9 @@ class MrRobotoGui(QMainWindow):
         self.ui.timePowerP.valueChanged.connect(self.estimate_time_P)
         self.ui.stepPowerP.valueChanged.connect(self.estimate_time_P)
         self.ui.stepsSpinBoxP.valueChanged.connect(self.estimate_time_P)
+
+        self.setupWidget.setWindowModality(QtCore.Qt.ApplicationModal)
+        self.setupWidget.show()
 
     def set_state(self, state):
         self.state = state
@@ -197,14 +196,29 @@ class MrRobotoGui(QMainWindow):
 
     # Check state
     def show_setup(self, _):
-        if not self.check_state():
-            return
-        self.setupWidget.cassettesSpinBox.setValue(len(self.cassettes))
-        self.setupWidget.show()
+        reply = QMessageBox.question(
+            None,
+            "test",
+            "This action will clear task queue, unregister scanner," +
+            "clear all scanned samples, and deactivate robot. Proceed?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self._end_roboto_thread()
+            self.setupWidget.cassettesSpinBox.setValue(len(self.cassettes))
+            self.setupWidget.setWindowModality(QtCore.Qt.ApplicationModal)
+            self.setupWidget.show()
+
+    def _end_roboto_thread(self):
+        self.taskQueue.put("finish", "finish", True)
+        self.splash.showMessage("Waiting for thread", 1, QtGui.QColor(255, 255, 255))
+        self.splash.show()
+        self.robotoThread.wait()
+        self.splash.close()
 
     def register_scanner(self, _):
-        self.commandQueue.put("CLEAR")
-        self.commandQueue.put("REGISTER")
+        self.taskQueue.put("Register Scanner", "register")
 
     def new_keyboard(self, keyboard):
         self.setupWidget.keylabel.setText(f"Scanner: {keyboard}")
@@ -219,13 +233,13 @@ class MrRobotoGui(QMainWindow):
             newCassettes = self.setupWidget.cassettesSpinBox.value()
             adj = newCassettes // 2
             for i in range(newCassettes):
-                newCassette = SampleCassette(self)
+                newCassette = SampleCassette(self, i - adj)
                 newCassette.sigSampleClicked.connect(self.sample_clicked)
                 self.cassettes.append(newCassette)
                 self.ui.cassetteStack.addWidget(self.cassettes[i])
                 self.ui.cassetteList.addItem(str(i - adj))
             self.ui.cassetteList.setCurrentRow(0)
-        self.setupWidget.hide()
+        self.robotoThread.start()
 
     def set_cassette(self, q):
         self.ui.cassetteStack.setCurrentIndex(
@@ -234,13 +248,13 @@ class MrRobotoGui(QMainWindow):
 
     def load_cassette(self):
         idx = int(self.ui.currentCassetteLabel.text())
-        with self.qLock:
-            self.taskQueue.append(
-                {
-                    "task": "load_cassette",
-                    "data": idx
-                }
-            )
+        self.taskQueue.put(
+            label=f"Load Cassette {idx}",
+            task={
+                "task": "load_cassette",
+                "data": idx
+            }
+        )
 
     def cassette_loaded(self, idx):
         self.ui.currentCassetteLabel.setText(idx)
@@ -255,13 +269,13 @@ class MrRobotoGui(QMainWindow):
         self.ui.metaDataText.setText(data)
 
     def mount_sample(self, _=None):
-        with self.qLock:
-            self.taskQueue.append(
-                {
-                    "task": "mount_sample",
-                    "data": deepcopy(self.selectedSample)
-                }
-            )
+        self.taskQueue.put(
+            "Mount sample " + self.get_sample_label(self.selectedSample),
+            {
+                "task": "mount",
+                "data": deepcopy(self.selectedSample)
+            }
+        )
         self.ui.mountButton.setText("Dismount")
         self.ui.mountButton.clicked.disconnect(self.mount_sample)
         self.ui.mountButton.clicked.connect(self.dismount_sample)
@@ -274,63 +288,44 @@ class MrRobotoGui(QMainWindow):
             id = sample["metaData"].get("id", "unscanned")
             self.ui.currentSampleLabel.setText(id)
 
-    # Check state
     def dismount_sample(self, _=None):
-        if not self.check_state(mounted=True, cassette=None):
-            return
-        self.set_state("Dismounting")
-        DismountSample(self.roboto)
-        self.set_state("Safe")
-        self.grabbedSample = deepcopy(self.mountedSample)
-        self._set_mounted_sample(None)
-        self.replace_current()
+        self.taskQueue.put("Dismount Sample", "dismount")
         self.ui.mountButton.setText("Mount")
         self.ui.mountButton.clicked.disconnect(self.dismount_sample)
         self.ui.mountButton.clicked.connect(self.mount_sample)
 
-    # Check state
+    def get_sample_label(self, sample):
+        if sample["cassette"] != int(self.ui.currentCassetteLabel.text()):
+            note = '!!'
+        else:
+            note = ''
+        return f"row: {sample['row']} col: {sample['col']} cas: {sample['cassette']}" + note
+
     def scan_sample(self, _=None, sampleIDX=None):
-        if not self.check_state():
-            return
         if self.selectedSample is not None:
-            self.ui.statusbar.showMessage("Scanning Sample")
-            self.grab_selected_sample()
-            self.commandQueue.put("CLEAR")
-            self.set_state("Scanning")
-            self.roboto.MovePose(*BarcodeScanPose)
-            self.pause_splash_screen("Scanning", 1)
-            self.set_state("Safe")
-            self.replace_current()
-            rawCode = self.read_scanner_data(1)
-            if rawCode:
-                code = rawCode.split('\n')[0]
-                self.ui.metaDataText.setText(code)
-                cassette = self._current_cassette()
-                self.selectedSample["metaData"]["id"] = code
-                if self.metaDataFrame is not None:
-                    try:
-                        meta = self.metaDataFrame.loc[code].to_dict()
-                        self.ui.metaDataText.setText(json.dumps(meta))
-                        self.selectedSample["metaData"].update(meta)
-                    except:
-                        traceback.print_exc()
-                cassette.set_metadata(self.selectedSample)
-            self.awaitingScan = False
+            cassette = self._current_cassette()
+            sampleLabel = self.get_sample_label(self.selectedSample)
+            self.taskQueue.put(
+                f"Scan Sample " + sampleLabel,
+                {
+                    "task": "scan",
+                    "data": {
+                        "sample": deepcopy(self.selectedSample),
+                        "cassette": cassette
+                    }
+                }
+            )
 
-    # Check state
-    def scan_grabbed_sample(self, barcode_joints, code):
-        if not self.check_state(grabbed=True, mounted=None, cassette=None):
-            return
-        self.set_state("Scanning")
-        self.roboto.MoveJoints(*barcode_joints)
-        code = self.read_scanner_data(1)
-        self.set_state("Safe")
-        return code
-
-    def read_scanner_data(self, timeout):
-        self.pause_splash_screen("Scanning sample", timeout)
-        code = self.tsString.get_data()
-        return code
+    def sample_scanned(self, code):
+        self.ui.metaDataText.setText(code)
+        if self.metaDataFrame is not None:
+            try:
+                meta = self.metaDataFrame.loc[code].to_dict()
+                self.ui.metaDataText.setText(json.dumps(meta))
+                self.selectedSample["metaData"].update(meta)
+            except:
+                traceback.print_exc()
+        cassette.set_metadata(self.selectedSample)
 
     def handle_buffer(self, buffer):
         print(buffer)
@@ -407,14 +402,8 @@ class MrRobotoGui(QMainWindow):
         pass
 
     def closeEvent(self, event):
-        print("Sending kill command to QKeyLog")
-        with self.qLock:
-            if self.taskQueue:
-                self.taskQueue[0] = {"task": "finish"}
-            else:
-                self.taskQueue.append({"task": "finish"})
+        print("Sending finish command to thread")
+        self.taskQueue.put("Finish", {"task": "finish"}, True)
         self.robotoThread.wait()
-        self.commandQueue.put("QUIT")
-        self.keylog.wait()
         print("Closing")
         super(MrRobotoGui, self).closeEvent(event)

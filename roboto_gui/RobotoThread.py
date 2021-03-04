@@ -1,6 +1,7 @@
 import copy
 import json
 from queue import Queue
+import traceback
 
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtWidgets import QMessageBox
@@ -19,8 +20,9 @@ class RobotoThread(QThread):
     createSpecFile = pyqtSignal(str)
     cassetteLoaded = pyqtSignal(str)
     stateChanged = pyqtSignal(str)
+    newKeyboard = pyqtSignal(str)
 
-    def __init__(self, qLock, taskQueue, robotoRequired, parent=None):
+    def __init__(self, taskQueue, robotoRequired, parent=None):
         """
 
         Parameters
@@ -29,7 +31,6 @@ class RobotoThread(QThread):
             Thread safe lock to control access to taskQueue
         """
         super(RobotoThread, self).__init__(parent)
-        self.qLock = qLock
         self.taskQueue = taskQueue
         self.robotoRequired = robotoRequired
 
@@ -40,15 +41,14 @@ class RobotoThread(QThread):
         self.selectedSample = None
         self.currentCassette = 0
 
+        self.roboto = None
+
         # QKeyLog Setup
         self.commandQueue = Queue()
         self.tsString = TSString()
         self.keylog = QKeyLog(self.commandQueue, self.tsString, parent=self)
-        self.keylog.sigKeyboard.connect(self.new_keyboard)
-        self.keylog.sigBuffer.connect(self.handle_buffer)
-        self.keylog.start()
-
-        self.roboto = None
+        self.keylog.sigKeyboard.connect(self.newKeyboard.emit)
+        self.timer = QtCore.QTimer()
 
     def set_state(self, state):
         self.state = state
@@ -126,6 +126,10 @@ class RobotoThread(QThread):
 
         return True
 
+    def register_scanner(self, _):
+        self.commandQueue.put("CLEAR")
+        self.commandQueue.put("REGISTER")
+
     # Check state
     def load_cassette(self, idx):
         if not self.check_state(safeState=None, cassette=None):
@@ -177,27 +181,86 @@ class RobotoThread(QThread):
         code = self.mountedSample["metaData"].get("id", "unscanned")
         self.createSpecFile.emit(code)
 
+    # Check state
+    def dismount_sample(self, _=None):
+        if not self.check_state(mounted=True, cassette=None):
+            return
+        self.set_state("Dismounting")
+        DismountSample(self.roboto)
+        self.set_state("Safe")
+        self.grabbedSample = deepcopy(self.mountedSample)
+        self.sampleMounted.emit(json.dumps(None))
+        self.replace_current()
+
+    # Check state
+    def scan_sample(self, cassette):
+        if not self.check_state():
+            return
+        if self.selectedSample is not None:
+            self.grab_selected_sample()
+            self.commandQueue.put("CLEAR")
+            self.set_state("Scanning")
+            self.roboto.MovePose(*BarcodeScanPose)
+            time.sleep(1)
+            self.set_state("Safe")
+            self.replace_current()
+            rawCode = self.read_scanner_data(1)
+            if rawCode:
+                code = rawCode.split('\n')[0]
+                self.ui.metaDataText.setText(code)
+                cassette = self._current_cassette()
+                self.selectedSample["metaData"]["id"] = code
+                if self.metaDataFrame is not None:
+                    try:
+                        meta = self.metaDataFrame.loc[code].to_dict()
+                        self.ui.metaDataText.setText(json.dumps(meta))
+                        self.selectedSample["metaData"].update(meta)
+                    except:
+                        traceback.print_exc()
+                cassette.set_metadata(self.selectedSample)
+            self.awaitingScan = False
+
+    # Check state
+    def scan_grabbed_sample(self, barcode_joints, code):
+        if not self.check_state(grabbed=True, mounted=None, cassette=None):
+            return
+        self.set_state("Scanning")
+        self.roboto.MoveJoints(*barcode_joints)
+        code = self.read_scanner_data(1)
+        self.set_state("Safe")
+        return code
+
+    def read_scanner_data(self, timeout):
+        time.sleep(1)
+        code = self.tsString.get_data()
+        return code
+
     def _run(self):
         while True:
-            task = None
-            with self.qLock:
-                if self.taskQueue:
-                    task = self.taskQueue.pop(0)
-                    self.taskStarted.emit(task)
+            task = self.taskQueue.get()
+            print(task)
+            self.taskStarted.emit(json.dumps(task))
 
-            if task is not None:
-                if task["task"].lower() == "finish":
-                    if self.mountedSample is not None:
-                        print(f"Closing while sample {self.mountedSample} is mounted")
-                        self.dismount_sample()
-                    if self.grabbedSample is not None:
-                        print(f"Closing while sample {self.grabbedSample} is grabbed")
-                        self.replace_current()
-                    break
+            if type(task) == dict:
+                name = task["task"]
+                data = task["data"]
+            else:
+                name = str(task)
+            if name.lower() == "finish":
+                if self.mountedSample is not None:
+                    print(f"Closing while sample {self.mountedSample} is mounted")
+                    self.dismount_sample()
+                if self.grabbedSample is not None:
+                    print(f"Closing while sample {self.grabbedSample} is grabbed")
+                    self.replace_current()
+                self.taskQueue.clear()
+                break
 
     def run(self):
         try:
             self.roboto = MrRobotoStart()
+            self.keylog.start()
+            self.taskQueue.clear()
             try:
                 test = list(self.roboto.GetJoints())
             except:
@@ -207,6 +270,9 @@ class RobotoThread(QThread):
             raise
         finally:
             self.roboto_disconnect()
+            print("Sending kill command to QKeyLog")
+            self.commandQueue.put("QUIT")
+            self.keylog.wait()
 
     def roboto_disconnect(self):
         if self.roboto is not None:
