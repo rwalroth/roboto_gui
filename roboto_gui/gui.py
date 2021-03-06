@@ -113,6 +113,7 @@ class MrRobotoGui(QMainWindow):
         self.ui.cassetteList.addItem("0")
         self.ui.cassetteList.setCurrentRow(0)
         self.ui.cassetteList.itemClicked.connect(self.set_cassette)
+        self.ui.currentCassetteLabel.setText("0")
         self.ui.loadButton.clicked.connect(self.load_cassette)
         self.load_cassette()
 
