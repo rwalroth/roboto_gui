@@ -44,8 +44,9 @@ class QueueWidget(QtWidgets.QWidget):
                 currentRow = self.ui.queueList.currentRow()
             else:
                 currentRow = idx
-            self.ui.queueList.takeItem(currentRow)
-            del self._qList[currentRow]
+            if currentRow >= 0 and self._qList:
+                self.ui.queueList.takeItem(currentRow)
+                del self._qList[currentRow]
 
     def _set_paused(self, q=None):
         self.set_paused()
@@ -84,10 +85,13 @@ class QueueWidget(QtWidgets.QWidget):
                 self.not_empty.wait()
             while self.paused:
                 self.not_paused.wait()
-            task = self._qList.popleft()
-            label = self.ui.queueList.takeItem(0)
-            self.ui.currentTaskLabel.setText(label.text())
-            return task, label.text()
+            if self._qList:
+                task = self._qList.popleft()
+                label = self.ui.queueList.takeItem(0)
+                self.ui.currentTaskLabel.setText(label.text())
+                return task, label.text()
+            else:
+                return "null", "null"
 
     def wait_for_paused(self):
         with self.not_paused:

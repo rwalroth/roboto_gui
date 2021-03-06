@@ -172,7 +172,10 @@ class MrRobotoGui(QMainWindow):
 
     def local_to_remote(self, dirname):
         if dirname[:len(self.localDataPath)] != self.localDataPath:
-            print("invalid path")
+            msgBox = QMessageBox()
+            msgBox.setText(f"Invalid path, must be within {self.localDataPath}")
+            msgBox.show()
+            msgBox.exec_()
             return
         return '~/data/' + dirname.split(self.localDataPath)[-1]
 
