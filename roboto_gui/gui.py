@@ -312,6 +312,11 @@ class MrRobotoGui(QMainWindow):
         print(idx)
         return self.cassettes[idx]
 
+    def _selected_cassette(self):
+        idx = (len(self.cassettes) // 2) + int(self.ui.cassetteList.currentItem().text())
+        print(idx)
+        return self.cassettes[idx]
+
     def sample_clicked(self, data):
         jdata = json.loads(data)
         self.selectedSample = jdata
@@ -382,7 +387,7 @@ class MrRobotoGui(QMainWindow):
 
     # Check state
     def scan_all_samples(self, _):
-        cassette = self._current_cassette()
+        cassette = self._selected_cassette()
         for button in cassette.sampleButtons:
             sample = button.to_dict()
             self.taskQueue.put(
@@ -447,7 +452,7 @@ class MrRobotoGui(QMainWindow):
 
     # Check state
     def run_all_samples(self, _):
-        cassette = self._current_cassette()
+        cassette = self._selected_cassette()
         command = self._get_spec_command()
         for button in cassette.sampleButtons:
             sample = button.to_dict()
@@ -469,8 +474,12 @@ class MrRobotoGui(QMainWindow):
 
     def closeEvent(self, event):
         print("Sending finish command to thread")
-        self.taskQueue.set_paused(pause=False)
+        splash = QtWidgets.QSplashScreen()
+        splash.show()
+        splash.showMessage("Closing down roboto thread...", 1, QtCore.Qt.white)
         self.taskQueue.put("Finish", {"task": "finish"}, True)
+        self.taskQueue.set_paused(pause=False)
         self.robotoThread.wait()
+        splash.finsih()
         print("Closing")
         super(MrRobotoGui, self).closeEvent(event)
