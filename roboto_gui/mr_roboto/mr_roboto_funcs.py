@@ -2,18 +2,14 @@ from .RobotController import *
 import msvcrt
 
 # Standard library imports
-import sys, os, glob, fnmatch, re, time
+import os
 
 # Other Imports
 from datetime import datetime
 
-from collections import OrderedDict
-from copy import deepcopy
-
 # This module imports
 
 # XDart imports
-sys.path.append('C:\\Users\\Public\\Documents\\repos\\xdart')
 from ..pySSRL_bServer.bServer_funcs import *
 
 SampleReadyPose = [145.333, -0.282, 195, 180, 0, -180]
@@ -160,6 +156,11 @@ def ScanSample(mr_roboto):
     mr_roboto.SetJointVel(speed)
     #mr_roboto.MoveJoints(0,0,0,0,0,0)
     return code
+
+
+def MovePose(mr_roboto, pose):
+    mr_roboto.MovePose(*pose)
+
         
 def SPEC_startspin():
     """Send SPEC command to start the capillary spinner"""

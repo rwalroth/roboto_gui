@@ -1,15 +1,19 @@
 import json
 from queue import Queue
 import traceback
+import os
+import datetime
 from threading import RLock
 from collections import deque
+from copy import deepcopy
 
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import QWidget, QMainWindow, QMessageBox
 
 import pandas as pd
 
-from .mr_roboto.mr_roboto_funcs import *
+# from .mr_roboto.mr_roboto_funcs import *
+from .mr_roboto import *
 from .sample_gui import Ui_MainWindow
 from .sample_cassette import SampleCassette
 from .qkeylog import QKeyLog
@@ -17,6 +21,7 @@ from .pySSRL_bServer.bServer_funcs import specCommand, wait_until_SPECfinished
 from .tsstring import TSString
 from .RobotoThread import RobotoThread
 from .QueueWidget import QueueWidget
+from .CommandLine import CommandLineWidget
 
 
 class SetupWidget(QWidget):
@@ -28,6 +33,7 @@ class SetupWidget(QWidget):
         self.setLayout(self.layout)
         self.cassettesLabel = QtWidgets.QLabel("Number of cassettes:")
         self.cassettesSpinBox = QtWidgets.QSpinBox()
+        self.cassettesSpinBox.setMinimum(1)
         self.layout.addWidget(self.cassettesLabel, 0, 0)
         self.layout.addWidget(self.cassettesSpinBox, 0, 1)
         self.keylabel = QtWidgets.QLabel("Scanner: None")
@@ -61,14 +67,26 @@ class MrRobotoGui(QMainWindow):
         self.splash = QtWidgets.QSplashScreen(self)
 
         self.taskQueue = QueueWidget(self)
-        self.taskLayout = QtWidgets.QHBoxLayout()
+        self.taskLayout = QtWidgets.QVBoxLayout()
         self.ui.queueFrame.setLayout(self.taskLayout)
         self.taskLayout.addWidget(self.taskQueue)
-        self.robotoThread = RobotoThread(self.taskQueue, robotoRequired, self)
-        self.robotoThread.stateChanged.connect(self.set_state)
-        self.robotoThread.createSpecFile.connect(self.create_SPEC_file)
+        self.commandLine = CommandLineWidget(self)
+        self.commandLine.sendButton.setText("Add to queue")
+        self.commandLine.sendCommand.connect(self.send_spec_command)
+        self.taskLayout.addWidget(self.commandLine)
+
+        self.robotoThread = RobotoThread(self.taskQueue, self)
+        # self.robotThread.taskStarted
+        # self.robotThread.taskFinished
+        self.robotoThread.sampleScanned.connect(self.sample_scanned)
         self.robotoThread.sampleMounted.connect(self._set_mounted_sample)
+        # self.robotThread.sampleRunning
+        # self.robotoThread.createSpecFile
+        self.robotoThread.cassetteLoaded.connect(self.cassette_loaded)
+        self.robotoThread.stateChanged.connect(self.set_state)
         self.robotoThread.newKeyboard.connect(self.new_keyboard)
+        self.robotoThread.commandNotRun.connect(self.command_not_run)
+        self.robotoThread.start()
 
         self.selectedSample = None
 
@@ -129,6 +147,12 @@ class MrRobotoGui(QMainWindow):
             self.ui.statusbar.showMessage(state)
         self.ui.stateLabel.setText(state)
 
+    def command_not_run(self, q):
+        self.ui.statusbar.showMessage(q)
+        msgBox = QMessageBox()
+        msgBox.setText(q + "\nAdjust commands in queue and push play when ready")
+        msgBox.exec_()
+
     def pause_splash_screen(self, message, timeout):
         self.splash.showMessage(message, 1, QtGui.QColor(255, 255, 255))
         self.splash.show()
@@ -152,6 +176,19 @@ class MrRobotoGui(QMainWindow):
             return
         return '~/data/' + dirname.split(self.localDataPath)[-1]
 
+    def send_spec_command(self, command):
+        if len(command) > 28:
+            label = "Spec: " + command[:25] + "..."
+        else:
+            label = "Spec: " + command
+        self.taskQueue.put(
+            label,
+            {
+                "task": "spec_command",
+                "data": command
+            }
+        )
+
     def set_pd_save_path(self, q=None):
         dirname = QtWidgets.QFileDialog.getExistingDirectory(self, "PD Save Path", self.localDataPath)
         if dirname != "":
@@ -160,11 +197,13 @@ class MrRobotoGui(QMainWindow):
                 return
             
             command = f'pd savepath {remote}'
-            try:
-                print(command)
-                specCommand(command, queue=True)
-            except:
-                traceback.print_exc()
+            self.taskQueue.put(
+                "Set pd save path",
+                {
+                    "task": "spec_command",
+                    "data": command
+                }
+            )
 
     def set_spec_file(self, q=None):
         dirname = QtWidgets.QFileDialog.getExistingDirectory(self, "SPEC Save Folder", self.localDataPath)
@@ -172,27 +211,31 @@ class MrRobotoGui(QMainWindow):
             remote = self.local_to_remote(dirname)
             if remote is not None:
                 self.specPath = remote + "/"
-    
-    def create_SPEC_file(self, code):
-        """Create new calibration spec file with date time stamp"""
-        if code == "unscanned":
-            row = int(self.mountedSample["row"]) + 1
-            column = int(self.mountedSample["column"]) + 1
-            idx = row * 3 + column
-            cidx = (len(self.cassettes) // 2) + int(self.ui.currentCassetteLabel.text()) + 1
-            samplenum = "unsc_" + str(1000*cidx + idx)
-        else:
-            samplenum = code.split()[-1]
-        now = datetime.now()
-        timestamp = now.strftime("%Y-%m-%d-%H%M")
-        print(f"Sample number is {samplenum}...")
-        samplename = f"BL21Robot_{samplenum}-{timestamp}"
-        command = f'newfile {self.specPath}{samplename}'
-        try:
-            print(command)
-            specCommand(command, queue=True)
-        except:
-            traceback.print_exc()
+                self.taskQueue.put(
+                    "New Spec File",
+                    {"task": "set_spec_file", "data": remote + "/"}
+                )
+
+    # def create_SPEC_file(self, code):
+    #     """Create new calibration spec file with date time stamp"""
+    #     if code == "unscanned":
+    #         row = int(self.mountedSample["row"]) + 1
+    #         column = int(self.mountedSample["column"]) + 1
+    #         idx = row * 3 + column
+    #         cidx = (len(self.cassettes) // 2) + int(self.ui.currentCassetteLabel.text()) + 1
+    #         samplenum = "unsc_" + str(1000*cidx + idx)
+    #     else:
+    #         samplenum = code.split()[-1]
+    #     now = datetime.now()
+    #     timestamp = now.strftime("%Y-%m-%d-%H%M")
+    #     print(f"Sample number is {samplenum}...")
+    #     samplename = f"BL21Robot_{samplenum}-{timestamp}"
+    #     command = f'newfile {self.specPath}{samplename}'
+    #     try:
+    #         print(command)
+    #         specCommand(command, queue=True)
+    #     except:
+    #         traceback.print_exc()
 
     # Check state
     def show_setup(self, _):
@@ -206,14 +249,15 @@ class MrRobotoGui(QMainWindow):
         )
         if reply == QMessageBox.Yes:
             self._end_roboto_thread()
+            self.robotoThread.start()
             self.setupWidget.cassettesSpinBox.setValue(len(self.cassettes))
             self.setupWidget.setWindowModality(QtCore.Qt.ApplicationModal)
             self.setupWidget.show()
 
     def _end_roboto_thread(self):
-        self.taskQueue.put("finish", "finish", True)
         self.splash.showMessage("Waiting for thread", 1, QtGui.QColor(255, 255, 255))
         self.splash.show()
+        self.taskQueue.put("finish", "finish", True)
         self.robotoThread.wait()
         self.splash.close()
 
@@ -239,7 +283,6 @@ class MrRobotoGui(QMainWindow):
                 self.ui.cassetteStack.addWidget(self.cassettes[i])
                 self.ui.cassetteList.addItem(str(i - adj))
             self.ui.cassetteList.setCurrentRow(0)
-        self.robotoThread.start()
 
     def set_cassette(self, q):
         self.ui.cassetteStack.setCurrentIndex(
@@ -247,7 +290,7 @@ class MrRobotoGui(QMainWindow):
         )
 
     def load_cassette(self):
-        idx = int(self.ui.currentCassetteLabel.text())
+        idx = int(self.ui.cassetteList.currentItem().text())
         self.taskQueue.put(
             label=f"Load Cassette {idx}",
             task={
@@ -257,6 +300,7 @@ class MrRobotoGui(QMainWindow):
         )
 
     def cassette_loaded(self, idx):
+        print(f"cassette loaded, idx: {idx}")
         self.ui.currentCassetteLabel.setText(idx)
 
     def _current_cassette(self):
@@ -269,16 +313,17 @@ class MrRobotoGui(QMainWindow):
         self.ui.metaDataText.setText(data)
 
     def mount_sample(self, _=None):
-        self.taskQueue.put(
-            "Mount sample " + self.get_sample_label(self.selectedSample),
-            {
-                "task": "mount",
-                "data": deepcopy(self.selectedSample)
-            }
-        )
-        self.ui.mountButton.setText("Dismount")
-        self.ui.mountButton.clicked.disconnect(self.mount_sample)
-        self.ui.mountButton.clicked.connect(self.dismount_sample)
+        if self.selectedSample is not None:
+            self.taskQueue.put(
+                "Mount sample " + self.get_sample_label(self.selectedSample),
+                {
+                    "task": "mount",
+                    "data": deepcopy(self.selectedSample)
+                }
+            )
+            self.ui.mountButton.setText("Dismount")
+            self.ui.mountButton.clicked.disconnect(self.mount_sample)
+            self.ui.mountButton.clicked.connect(self.dismount_sample)
 
     def _set_mounted_sample(self, jsample):
         sample = json.loads(jsample)
@@ -299,42 +344,49 @@ class MrRobotoGui(QMainWindow):
             note = '!!'
         else:
             note = ''
-        return f"row: {sample['row']} col: {sample['col']} cas: {sample['cassette']}" + note
+        return f"row: {sample['row']} col: {sample['column']} cas: {sample['cassette']}" + note
 
     def scan_sample(self, _=None, sampleIDX=None):
         if self.selectedSample is not None:
-            cassette = self._current_cassette()
             sampleLabel = self.get_sample_label(self.selectedSample)
             self.taskQueue.put(
-                f"Scan Sample " + sampleLabel,
+                "Scan Sample " + sampleLabel,
                 {
                     "task": "scan",
-                    "data": {
-                        "sample": deepcopy(self.selectedSample),
-                        "cassette": cassette
-                    }
+                    "data": deepcopy(self.selectedSample)
                 }
             )
 
-    def sample_scanned(self, code):
+    def sample_scanned(self, jsample, code):
+        sample = json.loads(jsample)
         self.ui.metaDataText.setText(code)
         if self.metaDataFrame is not None:
             try:
                 meta = self.metaDataFrame.loc[code].to_dict()
+                print(meta)
                 self.ui.metaDataText.setText(json.dumps(meta))
-                self.selectedSample["metaData"].update(meta)
-            except:
-                traceback.print_exc()
-        cassette.set_metadata(self.selectedSample)
+                sample["metaData"].update(meta)
+            except KeyError:
+                print(f"{code} not found in metadata")
+        idx = (len(self.cassettes) // 2) + int(sample["cassette"])
+        cassette = self.cassettes[idx]
+        cassette.set_metadata(sample)
 
     def handle_buffer(self, buffer):
         print(buffer)
 
     # Check state
     def scan_all_samples(self, _):
-        if not self.check_state():
-            return
-        pass
+        cassette = self._current_cassette()
+        for button in cassette.sampleButtons:
+            sample = button.to_dict()
+            self.taskQueue.put(
+                "Scan Sample " + self.get_sample_label(sample),
+                {
+                    "task": "scan",
+                    "data": deepcopy(sample)
+                }
+            )
 
     def estimate_time_A(self, _):
         estimate = self.ui.timeSpinBoxA.value() * self.ui.stepsSpinBoxA.value()
@@ -354,23 +406,26 @@ class MrRobotoGui(QMainWindow):
 
     # Check State
     def run_sample(self, _):
-        if not self.check_state(safeState=None, grabbed=None, mounted=True,
-                                cassette=None):
-            return
+        command = self._get_spec_command()
+        if command is not None:
+            self.taskQueue.put(
+                "Spec Scan",
+                {
+                    "task": "spec_scan",
+                    "data": command
+                }
+            )
+
+    def _get_spec_command(self):
+        command = None
         if self.ui.scanComboBox.currentText() == "ascan":
             motor = self.ui.motorSelectorA.currentText()
             start = self.ui.startSpinBoxA.value()
             stop = self.ui.stopSpinBoxA.value()
             steps = self.ui.stepsSpinBoxA.value()
             count = self.ui.timeSpinBoxA.value()
-            print(f"ascan {motor} {start} {stop} {steps} {count}")
-            try:
-                specCommand(f"ascan {motor} {start} {stop} {steps} {count}",
-                            queue=True)
-                self.ui.statusbar.showMessage("ascan running")
-                self._wait_for_spec()
-            except:
-                traceback.print_exc()
+            command = f"ascan {motor} {start} {stop} {steps} {count}"
+            print(command)
         elif self.ui.scanComboBox.currentText() == "pscan":
             motor = self.ui.motorSelectorP.currentText()
             start = self.ui.startSpinBoxP.value()
@@ -380,29 +435,35 @@ class MrRobotoGui(QMainWindow):
             maxTime = self.ui.maxTimeP.value()
             power2 = self.ui.timePowerP.value()
             steps = self.ui.stepsSpinBoxA.value()
-            print(f"pscan {motor} {start} {stop} {power1} " +
-                  f"{minTime} {maxTime} {power2} {steps}")
-            try:
-                specCommand(f"pscan {motor} {start} {stop} {power1} " +
-                            f"{minTime} {maxTime} {power2} {steps}", queue=True)
-                self.ui.statusbar.showMessage("pscan running")
-                self._wait_for_spec()
-            except:
-                traceback.print_exc()
-
-    def _wait_for_spec(self):
-        self.set_state("Waiting for SPEC")
-        wait_until_SPECfinished(5)
-        self.set_state("Safe")
+            command = (f"pscan {motor} {start} {stop} {power1} " +
+                       f"{minTime} {maxTime} {power2} {steps}")
+            print(command)
+        return command
 
     # Check state
     def run_all_samples(self, _):
-        if not self.check_state():
-            return
-        pass
+        cassette = self._current_cassette()
+        command = self._get_spec_command()
+        for button in cassette.sampleButtons:
+            sample = button.to_dict()
+            self.taskQueue.put(
+                "Mount Sample " + self.get_sample_label(sample),
+                {
+                    "task": "mount",
+                    "data": deepcopy(sample)
+                }
+            )
+            self.taskQueue.put(
+                "Spec Scan",
+                {
+                    "spec_scan": command
+                }
+            )
+            self.taskQueue.put("Dismount Sample", "dismount")
 
     def closeEvent(self, event):
         print("Sending finish command to thread")
+        self.taskQueue.set_paused(pause=False)
         self.taskQueue.put("Finish", {"task": "finish"}, True)
         self.robotoThread.wait()
         print("Closing")

@@ -1,5 +1,6 @@
 import json
 from threading import RLock
+from copy import deepcopy
 from PyQt5 import QtWidgets, QtCore
 
 
@@ -16,12 +17,18 @@ class SampleButton(QtWidgets.QPushButton):
         self.clicked.connect(self.button_clicked)
 
     def button_clicked(self, _):
-        self.sigClicked.emit(json.dumps({
-            "row": self.row,
-            "column": self.column,
-            "cassette": self.cassette,
-            "metaData": self.metaData
-        }))
+        self.sigClicked.emit(self.__str__())
+
+    def __str__(self):
+        return json.dumps(self.to_dict())
+
+    def to_dict(self):
+        return {
+            "row": deepcopy(self.row),
+            "column": deepcopy(self.column),
+            "cassette": deepcopy(self.cassette),
+            "metaData": deepcopy(self.metaData)
+        }
 
     def set_meta(self, newData):
         with self.metaLock:

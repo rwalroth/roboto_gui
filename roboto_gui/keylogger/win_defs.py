@@ -5,13 +5,12 @@
 from ctypes import *
 from ctypes.wintypes import *
 from .vkcodes import VKCodes
+from win32con import WM_CLOSE, WM_PAINT, WM_USER, WM_QUIT
 
 
 # Constants not in win32con
 RIDEV_INPUTSINK = 0x00000100
 WM_INPUT = 0x0ff
-WM_USER = 0x0400
-WM_PAINT = 0x000f
 PM_NOREMOVE = 0x0000
 PM_REMOVE = 0x0001
 PM_NOYIELD = 0x0002
@@ -58,7 +57,6 @@ PeekMessage.argtypes = (LPMSG, HWND, UINT, UINT, UINT)
 
 TranslateMessage = windll.user32.TranslateMessage
 TranslateMessage.argtypes = (LPMSG,)
-
 
 DispatchMessage = windll.user32.DispatchMessageW
 DispatchMessage.argtypes = (LPMSG,)
