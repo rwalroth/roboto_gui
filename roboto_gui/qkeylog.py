@@ -3,7 +3,7 @@ import json
 
 from PyQt5.QtCore import QThread, pyqtSignal
 from .keylogger import RawKeyboardProc, KeyboardHookProc, UWM_NEWNAME_MSG
-from .keylogger.win_defs import RegisterWindowMessage, LPCWSTR, PostMessage
+from .keylogger.win_defs import RegisterWindowMessage, LPCWSTR, PostMessage, WM_QUIT
 from ctypes.wintypes import HWND
 
 
@@ -19,11 +19,12 @@ class QKeyLog(QThread):
         self.keyboard = None
         self.bufferQueue = Queue()
         self.hookCommandQ = Queue()
-        self.keylogger = RawKeyboardProc(self.bufferQueue, daemon=True)
+        self.keylogger = None
         self.keyhook = None
         self.UWM_NEWNAME = RegisterWindowMessage(LPCWSTR(UWM_NEWNAME_MSG))
 
     def run(self):
+        self.keylogger = RawKeyboardProc(self.bufferQueue, daemon=True)
         self.keylogger.start()
         message = json.loads(self.bufferQueue.get())
         self.keyhook = KeyboardHookProc(message["hwnd"], self.hookCommandQ, daemon=True)
@@ -37,7 +38,7 @@ class QKeyLog(QThread):
                     self.keyboard = message["keyboard"]
                     self.getKeyboard = False
                     self.sigKeyboard.emit(self.keyboard)
-                if self.keyboard is not None and self.keyboard == message["keyboard"] and message["key"] is not None:
+                if (self.keyboard is not None) and (self.keyboard == message["keyboard"]) and (message["key"] is not None):
                     self.tsString.append_data(message["key"])
             if not self.commandQueue.empty():
                 command = self.commandQueue.get()
@@ -57,3 +58,6 @@ class QKeyLog(QThread):
                 elif command == "QUIT":
                     break
         self.hookCommandQ.put("QUIT")
+        PostMessage(self.keylogHwnd, WM_QUIT, 0, 0)
+        self.keyhook.join()
+        self.keylogger.join()

@@ -164,20 +164,6 @@
        <enum>QFrame::Raised</enum>
       </property>
       <layout class="QGridLayout" name="gridLayout">
-       <item row="2" column="1">
-        <widget class="QComboBox" name="scanComboBox">
-         <item>
-          <property name="text">
-           <string>ascan</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>pscan</string>
-          </property>
-         </item>
-        </widget>
-       </item>
        <item row="1" column="1">
         <widget class="QFrame" name="frame">
          <property name="frameShape">
@@ -205,39 +191,6 @@
            <widget class="QPushButton" name="scanAllButton">
             <property name="text">
              <string>Scan All</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item row="0" column="1">
-        <widget class="QTextEdit" name="metaDataText">
-         <property name="readOnly">
-          <bool>true</bool>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="1">
-        <widget class="QFrame" name="frame_3">
-         <property name="frameShape">
-          <enum>QFrame::StyledPanel</enum>
-         </property>
-         <property name="frameShadow">
-          <enum>QFrame::Raised</enum>
-         </property>
-         <layout class="QHBoxLayout" name="horizontalLayout_4">
-          <item>
-           <widget class="QPushButton" name="runButton">
-            <property name="text">
-             <string>Run</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="runAllButton">
-            <property name="text">
-             <string>Run All</string>
             </property>
            </widget>
           </item>
@@ -315,7 +268,11 @@
             </widget>
            </item>
            <item row="1" column="1">
-            <widget class="QSpinBox" name="stepsSpinBoxA"/>
+            <widget class="QSpinBox" name="stepsSpinBoxA">
+             <property name="maximum">
+              <number>999</number>
+             </property>
+            </widget>
            </item>
            <item row="1" column="2">
             <widget class="QLabel" name="label_8">
@@ -369,12 +326,18 @@
              <property name="decimals">
               <number>4</number>
              </property>
+             <property name="minimum">
+              <double>-180.000000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>180.000000000000000</double>
+             </property>
             </widget>
            </item>
            <item row="4" column="4">
             <widget class="QSpinBox" name="stepsSpinBoxP">
              <property name="maximum">
-              <number>1000</number>
+              <number>999</number>
              </property>
             </widget>
            </item>
@@ -447,7 +410,64 @@
          </widget>
         </widget>
        </item>
+       <item row="0" column="1">
+        <widget class="QTextEdit" name="metaDataText">
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="1">
+        <widget class="QFrame" name="frame_3">
+         <property name="frameShape">
+          <enum>QFrame::StyledPanel</enum>
+         </property>
+         <property name="frameShadow">
+          <enum>QFrame::Raised</enum>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_4">
+          <item>
+           <widget class="QPushButton" name="runButton">
+            <property name="text">
+             <string>Run</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="runAllButton">
+            <property name="text">
+             <string>Run All</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item row="2" column="1">
+        <widget class="QComboBox" name="scanComboBox">
+         <item>
+          <property name="text">
+           <string>ascan</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>pscan</string>
+          </property>
+         </item>
+        </widget>
+       </item>
       </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="queueFrame">
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Raised</enum>
+      </property>
      </widget>
     </item>
    </layout>

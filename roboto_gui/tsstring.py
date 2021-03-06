@@ -4,7 +4,7 @@ from copy import deepcopy
 
 class TSString:
 
-    def __init__(self, val=None):
+    def __init__(self, val=''):
         self._data = val
         self._lock = Lock()
 

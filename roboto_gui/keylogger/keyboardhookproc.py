@@ -17,7 +17,6 @@ else:
         "roboto_gui\\roboto_gui\\keylogger\\keyhookdll\\Win32\\keyhookdll.dll"
     )
 
-
 class KeyboardHookProc(Process):
     def __init__(self, hwnd, commandQueue=None, *args, **kwargs):
         super(KeyboardHookProc, self).__init__(*args, **kwargs)
@@ -34,8 +33,12 @@ class KeyboardHookProc(Process):
         res = dll.setMyHook(hwnd)
         if res != 1:
             raise RuntimeError("Failed to set hook")
+        msg = MSG()
         while True:
             if not self.commandQueue.empty():
                 command = self.commandQueue.get()
                 if command == "QUIT":
                     break
+            PeekMessage(byref(msg), hwnd, 0, 0, PM_REMOVE)
+            TranslateMessage(byref(msg))
+            DispatchMessage(byref(msg))

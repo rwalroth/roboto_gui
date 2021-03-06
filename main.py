@@ -21,6 +21,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     os.environ['PYQTGRAPH_QT_LIB'] = 'PyQt5'
     app.setStyleSheet(qdarkstyle.load_stylesheet(qt_api=os.environ['PYQTGRAPH_QT_LIB']))
-    w = MrRobotoGui()
+    w = MrRobotoGui(robotoRequired=False)
     w.show()
     sys.exit(app.exec_())
