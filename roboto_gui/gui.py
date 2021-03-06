@@ -119,13 +119,13 @@ class MrRobotoGui(QMainWindow):
         # Sample scan pane setup
         self.ui.mountButton.clicked.connect(self.mount_sample)
         self.ui.scanButton.clicked.connect(self.scan_sample)
-        #self.ui.scanAllButton.clicked.connect(self.scan_all_samples)
-        self.ui.scanAllButton.setEnabled(False)
+        self.ui.scanAllButton.clicked.connect(self.scan_all_samples)
+        # self.ui.scanAllButton.setEnabled(False)
 
         # Run pane setup
         self.ui.runButton.clicked.connect(self.run_sample)
-        #self.ui.runAllButton.clicked.connect(self.run_all_samples)
-        self.ui.runAllButton.setEnabled(False)
+        self.ui.runAllButton.clicked.connect(self.run_all_samples)
+        # self.ui.runAllButton.setEnabled(False)
         # ascan
         self.ui.stepsSpinBoxA.valueChanged.connect(self.estimate_time_A)
         self.ui.timeSpinBoxA.valueChanged.connect(self.estimate_time_A)
@@ -308,6 +308,7 @@ class MrRobotoGui(QMainWindow):
 
     def _current_cassette(self):
         idx = (len(self.cassettes) // 2) + int(self.ui.currentCassetteLabel.text())
+        print(idx)
         return self.cassettes[idx]
 
     def sample_clicked(self, data):
@@ -459,7 +460,8 @@ class MrRobotoGui(QMainWindow):
             self.taskQueue.put(
                 "Spec Scan",
                 {
-                    "spec_scan": command
+                    "task": "spec_scan",
+                    "data": command
                 }
             )
             self.taskQueue.put("Dismount Sample", "dismount")
