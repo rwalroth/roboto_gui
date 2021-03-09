@@ -12,6 +12,8 @@ from datetime import datetime
 # XDart imports
 from ..pySSRL_bServer.bServer_funcs import *
 
+NOCONNECT_IMPORTED = False
+
 SampleReadyPose = [145.333, -0.282, 195, 180, 0, -180]
 SampleHeight = 69
 MountReadyPose = [-47.761, -45.143, 351.589, -8.028, -89.263, -70.034]

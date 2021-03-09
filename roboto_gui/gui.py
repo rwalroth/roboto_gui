@@ -269,7 +269,10 @@ class MrRobotoGui(QMainWindow):
         self.taskQueue.put("Register Scanner", "register")
 
     def new_keyboard(self, keyboard):
-        self.setupWidget.keylabel.setText(f"Scanner: {keyboard}")
+        if keyboard is None or keyboard == "":
+            self.setupWidget.keylabel.setText(f"Scanner: None")
+        else:
+            self.setupWidget.keylabel.setText(f"Scanner: {keyboard}")
 
     def setup_finished(self, q):
         if q == 1:
@@ -480,6 +483,6 @@ class MrRobotoGui(QMainWindow):
         self.taskQueue.put("Finish", {"task": "finish"}, True)
         self.taskQueue.set_paused(pause=False)
         self.robotoThread.wait()
-        splash.finsih()
+        splash.close()
         print("Closing")
         super(MrRobotoGui, self).closeEvent(event)

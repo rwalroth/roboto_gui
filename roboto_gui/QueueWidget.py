@@ -12,7 +12,7 @@ class QueueWidget(QtWidgets.QWidget):
         self.mutex = Lock()
         self.not_empty = Condition(self.mutex)
         self.not_paused = Condition(self.mutex)
-        self.paused = False
+        self.set_paused(False)
         self._qList = deque([])
         self.ui.moveDownButton.clicked.connect(self._move_item_down)
         self.ui.moveUpButton.clicked.connect(self._move_item_up)
@@ -59,8 +59,10 @@ class QueueWidget(QtWidgets.QWidget):
                 self.paused = pause
             if self.paused:
                 self.ui.currentTaskLabel.setText("PAUSED")
+                self.ui.playPauseButton.setText("|>")
             else:
                 self.ui.currentTaskLabel.setText("None")
+                self.ui.playPauseButton.setText("||")
                 self.not_paused.notify()
 
     def is_paused(self):

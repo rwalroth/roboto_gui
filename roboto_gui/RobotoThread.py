@@ -274,7 +274,6 @@ class RobotoThread(QThread):
 
     def _run(self):
         while True:
-            self.taskQueue.wait_for_paused()
             task, label = self.taskQueue.get()
             print(task)
             self.taskStarted.emit(json.dumps(task))

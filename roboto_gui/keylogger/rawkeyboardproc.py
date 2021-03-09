@@ -10,7 +10,7 @@ from .win_defs import *
 
 
 class RawKeyboardProc(Process):
-    def __init__(self, bufferQueue=None, *args, **kwargs):
+    def __init__(self, bufferQueue=None, keyboard=None, ignoreList=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if bufferQueue is None:
             self.bufferQueue = Queue()
@@ -23,12 +23,23 @@ class RawKeyboardProc(Process):
         self.UWM_NEWNAME = None
 
         self.getNextKeyboard = False
-        self.keyboardName = ""
+        if keyboard is None:
+            self.keyboardName = ""
+        else:
+            self.keyboardName = keyboard
+
+        if ignoreList is None:
+            self._ignoreList = []
+        else:
+            self._ignoreList = ignoreList
+
+        self.ignoreList = None
 
         self.decisionBuffer = []
 
     def run(self):
         print("Starting raw keyboard proc")
+        self.ignoreList = set(self._ignoreList)
         CLASS_NAME = "Mr Roboto raw keyboard input class"
         hInstance = win32api.GetModuleHandle()
 
@@ -75,6 +86,7 @@ class RawKeyboardProc(Process):
     def WndProc(self, hwnd, uMsg, wParam, lParam):
         if uMsg == self.UWM_NEWNAME:
             self.getNextKeyboard = True
+            self.keyboardName = ""
 
         elif uMsg == WM_INPUT:
             return self._handle_wm_input(lParam)
@@ -137,8 +149,9 @@ class RawKeyboardProc(Process):
             keyboardName = self._get_keyboard_name(raw)
 
             if self.getNextKeyboard:
-                self.keyboardName = keyboardName
-                self.getNextKeyboard = False
+                if keyboardName not in self.ignoreList:
+                    self.keyboardName = keyboardName
+                    self.getNextKeyboard = False
 
             self.decisionBuffer.append(
                 {
@@ -154,8 +167,7 @@ class RawKeyboardProc(Process):
         return 0
 
     def _send_keyboard_message(self, keyboardName, raw):
-        message = {"keyboard": keyboardName}
-        message["key"] = None
+        message = {"keyboard": keyboardName, "key": None}
 
         if raw.keyboard.VKey in VKCodes:
             newChar = VKCodes[raw.keyboard.VKey]
