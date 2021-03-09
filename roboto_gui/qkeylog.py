@@ -35,15 +35,15 @@ class QKeyLog(QThread):
                 for key in self.keyboardRecord:
                     if key in keyboardRecord:
                         self.keyboardRecord[key] = keyboardRecord[key]
-
+        self.ignoreList = set(self.keyboardRecord["ignore_list"])
         self.tsString = tsString
         self.commandQueue = commandqueue
         self.getKeyboard = False
-        if self.keyboardRecord["last_used"] is None or \
-                self.keyboardRecord["last_used"] == "null":
+        lastUsed = self.keyboardRecord["last_used"]
+        if lastUsed is None or lastUsed == "null" or lastUsed in self.ignoreList:
             self.keyboard = None
         else:
-            self.keyboard = self.keyboardRecord["last_used"]
+            self.keyboard = lastUsed
         self.bufferQueue = Queue()
         self.hookCommandQ = Queue()
         self.keylogger = None
@@ -54,7 +54,7 @@ class QKeyLog(QThread):
         self.keylogger = RawKeyboardProc(
             self.bufferQueue,
             self.keyboard,
-            self.keyboardRecord["ignore_list"],
+            list(self.ignoreList),
             daemon=True)
         self.keylogger.start()
         message = json.loads(self.bufferQueue.get())
@@ -69,7 +69,7 @@ class QKeyLog(QThread):
                 message = json.loads(jMessage)
                 if self.getKeyboard:
                     keyboard = message["keyboard"]
-                    if keyboard not in self.keyboardRecord["ignore_list"]:
+                    if keyboard not in self.ignoreList:
                         self.keyboard = message["keyboard"]
                         self.getKeyboard = False
                         self.sigKeyboard.emit(self.keyboard)
