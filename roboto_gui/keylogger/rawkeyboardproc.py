@@ -148,11 +148,6 @@ class RawKeyboardProc(Process):
         if raw.header.dwType == RIM_TYPEKEYBOARD:
             keyboardName = self._get_keyboard_name(raw)
 
-            if self.getNextKeyboard:
-                if keyboardName not in self.ignoreList:
-                    self.keyboardName = keyboardName
-                    self.getNextKeyboard = False
-
             self.decisionBuffer.append(
                 {
                     "code": raw.keyboard.VKey,
@@ -163,6 +158,11 @@ class RawKeyboardProc(Process):
 
             if self.keyboardName == keyboardName:
                 self._send_keyboard_message(keyboardName, raw)
+
+            if self.getNextKeyboard:
+                if keyboardName not in self.ignoreList:
+                    self.keyboardName = keyboardName
+                    self.getNextKeyboard = False
 
         return 0
 

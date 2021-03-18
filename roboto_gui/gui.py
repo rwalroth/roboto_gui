@@ -22,6 +22,7 @@ from .tsstring import TSString
 from .RobotoThread import RobotoThread
 from .QueueWidget import QueueWidget
 from .CommandLine import CommandLineWidget
+from .WaitForKeyboard import WaitForKeyboard
 
 
 class SetupWidget(QWidget):
@@ -38,15 +39,17 @@ class SetupWidget(QWidget):
         self.layout.addWidget(self.cassettesSpinBox, 0, 1)
         self.keylabel = QtWidgets.QLabel("Scanner: None")
         self.registerButton = QtWidgets.QPushButton("Register Scanner")
+        self.ignoreButton = QtWidgets.QPushButton("Ignore Keyboard...")
         self.layout.addWidget(self.registerButton, 1, 0)
         self.layout.addWidget(self.keylabel, 1, 1)
+        self.layout.addWidget(self.ignoreButton, 2, 0)
         self.applyButton = QtWidgets.QPushButton("Apply")
         self.cancelButton = QtWidgets.QPushButton("Cancel")
-        self.layout.addWidget(self.applyButton, 2, 0)
-        self.layout.addWidget(self.cancelButton, 2, 1)
+        self.layout.addWidget(self.applyButton, 3, 0)
+        # self.layout.addWidget(self.cancelButton, 3, 1)
 
         self.applyButton.clicked.connect(self.apply_clicked)
-        self.cancelButton.clicked.connect(self.cancel_clicked)
+        # self.cancelButton.clicked.connect(self.cancel_clicked)
 
     def apply_clicked(self, _):
         self.sigFinished.emit(1)
@@ -55,6 +58,10 @@ class SetupWidget(QWidget):
     def cancel_clicked(self, _):
         self.sigFinished.emit(-1)
         self.close()
+
+    def closeEvent(self, a0: QtGui.QCloseEvent) -> None:
+        self.sigFinished.emit(1)
+        super().closeEvent(a0)
 
 
 class MrRobotoGui(QMainWindow):
@@ -75,7 +82,10 @@ class MrRobotoGui(QMainWindow):
         self.commandLine.sendCommand.connect(self.send_spec_command)
         self.taskLayout.addWidget(self.commandLine)
 
-        self.robotoThread = RobotoThread(self.taskQueue, self)
+        self.klCommandQueue = Queue()
+        self.robotoThread = RobotoThread(taskQueue=self.taskQueue,
+                                         klCommandQueue=self.klCommandQueue,
+                                         parent=self)
         # self.robotThread.taskStarted
         # self.robotThread.taskFinished
         self.robotoThread.sampleScanned.connect(self.sample_scanned)
@@ -96,6 +106,7 @@ class MrRobotoGui(QMainWindow):
         self.setupWidget.hide()
         self.setupWidget.sigFinished.connect(self.setup_finished)
         self.setupWidget.registerButton.clicked.connect(self.register_scanner)
+        self.setupWidget.ignoreButton.clicked.connect(self.ignore_keyboard)
         self.ui.actionSetup.triggered.connect(self.show_setup)
         # File
         self.dataFilePath = ""
@@ -266,7 +277,17 @@ class MrRobotoGui(QMainWindow):
         self.splash.close()
 
     def register_scanner(self, _):
-        self.taskQueue.put("Register Scanner", "register")
+        self.klCommandQueue.put("CLEAR")
+        self.klCommandQueue.put("REGISTER")
+        # msgBox = QMessageBox()
+        # msgBox.setText(f"Scan barcode to register scanner")
+        # msgBox.show()
+        # msgBox.exec_()
+        wfkb = WaitForKeyboard()
+        wfkb.exec_()
+
+    def ignore_keyboard(self, _):
+        self.taskQueue.put("Ignore keyboard", "ignore_kb", True)
 
     def new_keyboard(self, keyboard):
         if keyboard is None or keyboard == "":

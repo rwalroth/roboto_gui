@@ -26,7 +26,7 @@ class RobotoThread(QThread):
     newKeyboard = pyqtSignal(str)
     commandNotRun = pyqtSignal(str)
 
-    def __init__(self, taskQueue, parent=None):
+    def __init__(self, taskQueue, klCommandQueue=None, parent=None):
         """
 
         Parameters
@@ -49,7 +49,10 @@ class RobotoThread(QThread):
         self.specPath = ""
 
         # QKeyLog Setup
-        self.commandQueue = Queue()
+        if klCommandQueue is None:
+            self.commandQueue = Queue()
+        else:
+            self.commandQueue = klCommandQueue
         self.tsString = TSString()
         self.keylog = QKeyLog(self.commandQueue, self.tsString, parent=self)
         self.keylog.sigKeyboard.connect(self.newKeyboard.emit)
@@ -126,7 +129,7 @@ class RobotoThread(QThread):
 
         return True
 
-    def register_scanner(self, _):
+    def register_scanner(self, _=None):
         self.commandQueue.put("CLEAR")
         self.commandQueue.put("REGISTER")
 
@@ -293,7 +296,7 @@ class RobotoThread(QThread):
                 break
 
             elif name == "register":
-                self.commandQueue.put("REGISTER")
+                self.register_scanner()
 
             elif name == "load_cassette":
                 result = self.load_cassette(data)

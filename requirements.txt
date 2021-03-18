@@ -3,3 +3,5 @@ qdarkstyle
 pywin32
 requests
 pandas
+numpy
+pyserial
