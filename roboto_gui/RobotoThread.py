@@ -2,16 +2,16 @@ import copy
 from copy import deepcopy
 from datetime import datetime
 import json
-from queue import Queue
+from queue import Queue, Empty
 import traceback
 
+import serial
+from serial.serialutil import SerialException, PortNotOpenError, SerialTimeoutException
 from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 from PyQt5.QtWidgets import QMessageBox
 
-# from .mr_roboto.mr_roboto_funcs import *
 from .mr_roboto import *
-from .qkeylog import QKeyLog
-from .tsstring import TSString
+from .zebra_ssi import *
 
 
 class RobotoThread(QThread):
@@ -26,7 +26,7 @@ class RobotoThread(QThread):
     newKeyboard = pyqtSignal(str)
     commandNotRun = pyqtSignal(str)
 
-    def __init__(self, taskQueue, klCommandQueue=None, parent=None):
+    def __init__(self, taskQueue, parent=None):
         """
 
         Parameters
@@ -47,22 +47,20 @@ class RobotoThread(QThread):
         self.roboto = None
 
         self.specPath = ""
+        self.scanner = serial.Serial(None, 9600, stopbits=serial.STOPBITS_ONE,
+                                     bytesize=serial.EIGHTBITS, timeout=0.1)
+        self.scannerBuffer = Queue()
+        self.scannerLive = Event()
+        self.scannerThread = ScannerThread(self.scanner, self.scannerBuffer,
+                                           self.scannerLive)
+        self.scannerThread.start()
 
-        # QKeyLog Setup
-        if klCommandQueue is None:
-            self.commandQueue = Queue()
-        else:
-            self.commandQueue = klCommandQueue
-        self.tsString = TSString()
-        self.keylog = QKeyLog(self.commandQueue, self.tsString, parent=self)
-        self.keylog.sigKeyboard.connect(self.newKeyboard.emit)
-        self.timer = QTimer()
 
     def set_state(self, state):
         self.state = state
         self.stateChanged.emit(state)
 
-    def _check_safe(self, safeState):
+    def _check_state(self, safeState):
         if safeState:
             if self.state.lower() != "safe":
                 print(f"Cannot execute, robot not safe")
@@ -102,7 +100,7 @@ class RobotoThread(QThread):
                 self.load_cassette(self.selectedSample["cassette"])
         return True
 
-    def check_state(self, safeState=True, grabbed=False, mounted=False, cassette=True):
+    def check_safe(self, safeState=True, grabbed=False, mounted=False, cassette=True):
         """
 
         Args:
@@ -112,7 +110,7 @@ class RobotoThread(QThread):
             safeState (bool, None):
         """
         if safeState is not None:
-            if not self._check_safe(safeState):
+            if not self._check_state(safeState):
                 return False
 
         if grabbed is not None:
@@ -129,13 +127,21 @@ class RobotoThread(QThread):
 
         return True
 
-    def register_scanner(self, _=None):
-        self.commandQueue.put("CLEAR")
-        self.commandQueue.put("REGISTER")
+    def register_scanner(self, port=None):
+        try:
+            if port is not None:
+                self.scannerLive.clear()
+                self.scanner.close()
+                self.scanner.port = port
+            self.scanner.open()
+            self.scannerLive.set()
+            send_scanner_message(self.scanner, PARAM_SEND, [0x01, 0xee, 1])
+        except (SerialException, PortNotOpenError) as error:
+            print(f"Failed to open scanner at port {port}")
 
     # Check state
     def load_cassette(self, idx):
-        if not self.check_state(safeState=None, cassette=None):
+        if not self.check_safe(safeState=None, cassette=None):
             return -1
         # self.ui.currentCassetteLabel.setText(self.ui.cassetteList.currentItem().text())
         self.set_state("Loading Cassette")
@@ -147,7 +153,7 @@ class RobotoThread(QThread):
 
     # Check state
     def grab_selected_sample(self):
-        if not self.check_state():
+        if not self.check_safe():
             return -1
         self.set_state("Grabbing")
         GrabSample(
@@ -161,7 +167,7 @@ class RobotoThread(QThread):
 
     # Check state
     def replace_current(self):
-        if not self.check_state(grabbed=True, mounted=None, cassette=None):
+        if not self.check_safe(grabbed=True, mounted=None, cassette=None):
             return -1
         self.set_state("Replacing")
         ReplaceSample(
@@ -175,7 +181,7 @@ class RobotoThread(QThread):
 
     # Check state
     def mount_sample(self, _=None):
-        if not self.check_state():
+        if not self.check_safe():
             return -1
         self.grab_selected_sample()
         self.set_state("Mounting")
@@ -211,7 +217,7 @@ class RobotoThread(QThread):
 
     # Check state
     def dismount_sample(self, _=None):
-        if not self.check_state(mounted=True, cassette=None):
+        if not self.check_safe(mounted=True, cassette=None):
             return -1
         self.set_state("Dismounting")
         DismountSample(self.roboto)
@@ -224,11 +230,11 @@ class RobotoThread(QThread):
 
     # Check state
     def scan_sample(self):
-        if not self.check_state():
+        if not self.check_safe():
             return -1
         if self.selectedSample is not None:
             self.grab_selected_sample()
-            self.commandQueue.put("CLEAR")
+            self.clear_scanner_buffer()
             self.set_state("Scanning")
             MovePose(self.roboto, BarcodeScanPose)
             time.sleep(1)
@@ -241,24 +247,35 @@ class RobotoThread(QThread):
                 self.sampleScanned.emit(json.dumps(self.selectedSample), code)
         return 0
 
-    # Check state
-    def scan_grabbed_sample(self, barcode_joints, code):
-        if not self.check_state(grabbed=True, mounted=None, cassette=None):
-            return -1
-        self.set_state("Scanning")
-        self.roboto.MoveJoints(*barcode_joints)
-        code = self.read_scanner_data(1)
-        self.set_state("Safe")
-        return code
+    def clear_scanner_buffer(self):
+        try:
+            self.scanner.reset_output_buffer()
+            self.scanner.reset_input_buffer()
+            while not self.scannerBuffer.empty():
+                try:
+                    self.scannerBuffer.get(False)
+                    self.scannerBuffer.task_done()
+                except Empty:
+                    continue
+        except (SerialException, PortNotOpenError):
+            print("Failed to clear buffer")
 
     def read_scanner_data(self, timeout):
-        time.sleep(timeout)
-        code = self.tsString.get_data()
-        return code
+        try:
+            messageBytes = self.scannerBuffer.get(timeout=timeout)
+            print(messageBytes)
+            message = format_scanner_reply(messageBytes)
+            if message["opcode"] == DECODE_DATA:
+                return message["data"][1:].decode("ascii")
+            else:
+                print(message)
+        except Empty:
+            print("Scanner timeout")
+        return ""
 
     def run_sample(self, command):
-        if not self.check_state(safeState=True, grabbed=None, mounted=True,
-                                cassette=None):
+        if not self.check_safe(safeState=True, grabbed=None, mounted=True,
+                               cassette=None):
             return -1
         try:
             SPEC_startspin()
@@ -296,7 +313,7 @@ class RobotoThread(QThread):
                 break
 
             elif name == "register":
-                self.register_scanner()
+                self.register_scanner(data)
 
             elif name == "load_cassette":
                 result = self.load_cassette(data)
@@ -340,7 +357,7 @@ class RobotoThread(QThread):
 
     def run(self):
         try:
-            self.keylog.start()
+            self.register_scanner()
             self.taskQueue.clear()
             self.roboto = MrRobotoStart()
             if not NOCONNECT_IMPORTED:
@@ -353,9 +370,13 @@ class RobotoThread(QThread):
             raise
         finally:
             self.roboto_disconnect()
-            print("Sending close command to QKeyLog")
-            self.commandQueue.put("QUIT")
-            self.keylog.wait()
+            self.close_scanner()
+
+    def close_scanner(self):
+        self.scannerLive.clear()
+        self.scannerThread.exit_event.set()
+        self.scanner.close()
+        self.scannerThread.join()
 
     def roboto_disconnect(self):
         if self.roboto is not None:

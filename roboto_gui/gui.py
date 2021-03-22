@@ -37,11 +37,11 @@ class SetupWidget(QWidget):
         self.cassettesSpinBox.setMinimum(1)
         self.layout.addWidget(self.cassettesLabel, 0, 0)
         self.layout.addWidget(self.cassettesSpinBox, 0, 1)
-        self.keylabel = QtWidgets.QLabel("Scanner: None")
+        self.portEdit = QtWidgets.QLineEdit()
         self.registerButton = QtWidgets.QPushButton("Register Scanner")
         self.ignoreButton = QtWidgets.QPushButton("Ignore Keyboard...")
         self.layout.addWidget(self.registerButton, 1, 0)
-        self.layout.addWidget(self.keylabel, 1, 1)
+        self.layout.addWidget(self.portEdit, 1, 1)
         self.layout.addWidget(self.ignoreButton, 2, 0)
         self.applyButton = QtWidgets.QPushButton("Apply")
         self.cancelButton = QtWidgets.QPushButton("Cancel")
@@ -82,9 +82,7 @@ class MrRobotoGui(QMainWindow):
         self.commandLine.sendCommand.connect(self.send_spec_command)
         self.taskLayout.addWidget(self.commandLine)
 
-        self.klCommandQueue = Queue()
         self.robotoThread = RobotoThread(taskQueue=self.taskQueue,
-                                         klCommandQueue=self.klCommandQueue,
                                          parent=self)
         # self.robotThread.taskStarted
         # self.robotThread.taskFinished
@@ -277,14 +275,8 @@ class MrRobotoGui(QMainWindow):
         self.splash.close()
 
     def register_scanner(self, _):
-        self.klCommandQueue.put("CLEAR")
-        self.klCommandQueue.put("REGISTER")
-        # msgBox = QMessageBox()
-        # msgBox.setText(f"Scan barcode to register scanner")
-        # msgBox.show()
-        # msgBox.exec_()
-        wfkb = WaitForKeyboard()
-        wfkb.exec_()
+        port = self.setupWidget.portEdit.text()
+        self.taskQueue.put("register", {"task": "register", "data": port}, True)
 
     def ignore_keyboard(self, _):
         self.taskQueue.put("Ignore keyboard", "ignore_kb", True)
