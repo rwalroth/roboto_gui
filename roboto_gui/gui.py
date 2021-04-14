@@ -303,6 +303,9 @@ class MrRobotoGui(QMainWindow):
                 self.ui.cassetteStack.addWidget(self.cassettes[i])
                 self.ui.cassetteList.addItem(str(i - adj))
             self.ui.cassetteList.setCurrentRow(0)
+            self.taskQueue.put("set num cassettes",
+                               {"task": "set_numcassettes", "data": newCassettes},
+                               True)
 
     def set_cassette(self, q):
         self.ui.cassetteStack.setCurrentIndex(

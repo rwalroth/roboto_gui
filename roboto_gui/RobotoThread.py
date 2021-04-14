@@ -43,6 +43,7 @@ class RobotoThread(QThread):
         self.grabbedSample = None
         self.selectedSample = None
         self.currentCassette = 0
+        self.numCassettes = 1
 
         self.roboto = None
 
@@ -200,7 +201,7 @@ class RobotoThread(QThread):
             row = int(self.mountedSample["row"]) + 1
             column = int(self.mountedSample["column"]) + 1
             idx = row * 3 + column
-            cidx = self.mountedSample["cassette"] + 2
+            cidx = self.mountedSample["cassette"] + self.numCassettes // 2 + 1
             samplenum = "unsc_" + str(1000*cidx + idx)
         else:
             samplenum = code.split()[-1]
@@ -338,6 +339,9 @@ class RobotoThread(QThread):
 
             elif name == "set_spec_file":
                 self.specPath = data
+
+            elif name == "set_numcassttes":
+                self.numCassettes = data
 
             if result == 0:
                 self.taskFinished.emit(json.dumps(task))
